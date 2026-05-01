@@ -1,234 +1,258 @@
 package com.example.freeze_xpends.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.theme.*
+import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
 
+// --- DATOS SIMULADOS ---
+// Estructura para guardar el número de transacciones y el monto gastado ese día
+data class DailyExpenseData(val transactions: Int, val totalAmount: Float)
+
 @Composable
-fun CalendarScreen(
-    onNavigateBack: () -> Unit
-) {
-    // Estado para manejar el mes y año actual
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+fun CalendarScreen(onNavigateBack: () -> Unit) {
+    // Empezamos en Abril 2026 como en tu captura
+    var currentYearMonth by remember { mutableStateOf(YearMonth.of(2026, 4)) }
 
-    // Días de la semana
-    val dias = listOf("Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb")
+    // Simulamos los datos basados en tus bocetos (5, 10, 14, y 22 tienen gastos)
+    // En la vida real, esto vendría de tu base de datos de Aiven filtrado por currentYearMonth
+    val mockExpenses = remember(currentYearMonth) {
+        val year = currentYearMonth.year
+        val month = currentYearMonth.monthValue
+        mapOf(
+            LocalDate.of(year, month, 5) to DailyExpenseData(2, 7800f),
+            LocalDate.of(year, month, 10) to DailyExpenseData(1, 1500f),
+            LocalDate.of(year, month, 14) to DailyExpenseData(2, 3500f),
+            LocalDate.of(year, month, 22) to DailyExpenseData(1, 2800f)
+        )
+    }
 
-    // Cálculos del calendario
-    val daysInMonth = currentMonth.lengthOfMonth()
-    // Ajustamos para que la semana empiece en Domingo (0)
-    val firstDayOfMonth = currentMonth.atDay(1).dayOfWeek.value % 7
+    // Cálculos para el resumen
+    val totalTransactions = mockExpenses.values.sumOf { it.transactions }
+    val daysWithExpenses = mockExpenses.size
+    val totalAmountSpent = mockExpenses.values.sumOf { it.totalAmount.toDouble() }.toFloat()
+    val averagePerDay = if (daysWithExpenses > 0) totalAmountSpent / daysWithExpenses else 0f
 
     // Nombre del mes en español
-    val monthName = currentMonth.month.getDisplayName(TextStyle.FULL, Locale("es", "ES")).replaceFirstChar { it.uppercase() }
-    val year = currentMonth.year
-
-    // Función simulada de gastos (Igual a tu código de React)
-    fun getDummyDataForDay(day: Int): Int {
-        if (day == 5 || day == 14) return 2
-        if (day == 10 || day == 22) return 1
-        return 0
-    }
+    val monthName = currentYearMonth.month.getDisplayName(TextStyle.FULL, Locale("es", "MX")).replaceFirstChar { it.uppercase() }
+    val year = currentYearMonth.year
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundGray)
+            .background(BackgroundSlate)
     ) {
-        // ==========================================
-        // HEADER AZUL
-        // ==========================================
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = BluePrimary,
-            shadowElevation = 4.dp
+        // --- 1. HEADER AZUL ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(PrimaryBlue),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Row(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .statusBarsPadding(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
-                }
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = "Calendario de Gastos",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
+            IconButton(onClick = onNavigateBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
             }
+            Text(
+                text = "Calendario de Gastos",
+                modifier = Modifier.padding(start = 48.dp),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
         }
 
-        // ==========================================
-        // CONTENIDO SCROLLABLE
-        // ==========================================
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(24.dp)
         ) {
-            // TARJETA DEL CALENDARIO
+            // --- 2. TARJETA DEL CALENDARIO ---
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, BorderSlate)
             ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    // Controles de navegación del mes
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Controles del mes
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { currentMonth = currentMonth.minusMonths(1) }) {
-                            Icon(Icons.Default.ChevronLeft, contentDescription = "Mes Anterior", tint = ForegroundDark)
+                        IconButton(onClick = { currentYearMonth = currentYearMonth.minusMonths(1) }) {
+                            Icon(Icons.Default.ChevronLeft, contentDescription = "Anterior", tint = TextDark)
                         }
-
                         Text(
                             text = "$monthName $year",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ForegroundDark
+                            color = TextDark
                         )
-
-                        IconButton(onClick = { currentMonth = currentMonth.plusMonths(1) }) {
-                            Icon(Icons.Default.ChevronRight, contentDescription = "Mes Siguiente", tint = ForegroundDark)
+                        IconButton(onClick = { currentYearMonth = currentYearMonth.plusMonths(1) }) {
+                            Icon(Icons.Default.ChevronRight, contentDescription = "Siguiente", tint = TextDark)
                         }
                     }
 
-                    // Encabezado de los días (Dom, Lun, Mar...)
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        dias.forEach { dia ->
-                            Text(
-                                text = dia,
-                                modifier = Modifier.weight(1f),
-                                textAlign = TextAlign.Center,
-                                color = SlateMuted,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Medium
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Días de la semana
+                    val daysOfWeek = listOf("Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb")
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
+                        daysOfWeek.forEach { day ->
+                            Text(text = day, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Lógica del Grid del Calendario
+                    val firstDayOfMonth = currentYearMonth.atDay(1)
+                    // value 1 = Lunes ... 7 = Domingo. Ajustamos para que Domingo sea 0
+                    val startOffset = if (firstDayOfMonth.dayOfWeek.value == 7) 0 else firstDayOfMonth.dayOfWeek.value
+                    val daysInMonth = currentYearMonth.lengthOfMonth()
+
+                    val totalCells = startOffset + daysInMonth
+                    val rows = if (totalCells % 7 == 0) totalCells / 7 else (totalCells / 7) + 1
+
+                    // Dibujamos el grid
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(7),
+                        modifier = Modifier.height((rows * 60).dp), // Altura dinámica según las semanas del mes
+                        userScrollEnabled = false,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        // Celdas vacías antes del primer día del mes
+                        items(startOffset) {
+                            Box(modifier = Modifier.size(40.dp))
+                        }
+
+                        // Días reales del mes
+                        items(daysInMonth) { dayIndex ->
+                            val currentDay = dayIndex + 1
+                            val date = LocalDate.of(currentYearMonth.year, currentYearMonth.monthValue, currentDay)
+                            val expenseData = mockExpenses[date]
+
+                            CalendarDayCell(
+                                dayNumber = currentDay.toString(),
+                                expenseData = expenseData
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Cuadrícula de los días (6 filas max * 7 columnas)
-                    val totalSlots = firstDayOfMonth + daysInMonth
-                    val rows = Math.ceil(totalSlots / 7.0).toInt()
-
-                    for (i in 0 until rows) {
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            for (j in 0..6) {
-                                val dayIndex = (i * 7) + j
-                                val dayNumber = dayIndex - firstDayOfMonth + 1
-
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .aspectRatio(1f)
-                                        .padding(2.dp)
-                                ) {
-                                    if (dayNumber in 1..daysInMonth) {
-                                        val gastosCount = getDummyDataForDay(dayNumber)
-                                        val isHighlighted = gastosCount > 0
-
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(if (isHighlighted) GreenAccent else BackgroundGray)
-                                                .clickable { /* Mostrar detalles del día */ }
-                                                .padding(4.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.Center
-                                        ) {
-                                            Text(
-                                                text = dayNumber.toString(),
-                                                color = if (isHighlighted) Color.White else ForegroundDark,
-                                                fontWeight = if (isHighlighted) FontWeight.Bold else FontWeight.Normal,
-                                                fontSize = 14.sp
-                                            )
-                                            if (isHighlighted) {
-                                                Text(
-                                                    text = "$gastosCount trans.",
-                                                    color = Color.White.copy(alpha = 0.9f),
-                                                    fontSize = 9.sp,
-                                                    textAlign = TextAlign.Center
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
-            // TARJETA DE RESUMEN
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // --- 3. TARJETA DE RESUMEN ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, BorderSlate)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    Text(
-                        text = "Resumen de $monthName",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ForegroundDark,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
+                    Text("Resumen de $monthName", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark)
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total de transacciones", color = SlateMuted)
-                        Text("6", fontWeight = FontWeight.Medium, color = ForegroundDark)
-                    }
-                    Divider(modifier = Modifier.padding(vertical = 12.dp), color = BackgroundGray)
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Días con gastos", color = SlateMuted)
-                        Text("4", fontWeight = FontWeight.Medium, color = ForegroundDark)
-                    }
-                    Divider(modifier = Modifier.padding(vertical = 12.dp), color = BackgroundGray)
+                    SummaryRow(label = "Total de transacciones", value = totalTransactions.toString(), isHighlight = false)
+                    Divider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Promedio por día", color = SlateMuted)
-                        Text("$3,900", fontWeight = FontWeight.Bold, color = BluePrimary)
-                    }
+                    SummaryRow(label = "Días con gastos", value = daysWithExpenses.toString(), isHighlight = false)
+                    Divider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
+
+                    SummaryRow(label = "Promedio por día", value = "$${"%.0f".format(averagePerDay)}", isHighlight = true)
                 }
             }
+
+            Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+// --- COMPONENTES AUXILIARES ---
+
+@Composable
+fun CalendarDayCell(dayNumber: String, expenseData: DailyExpenseData?) {
+    val hasExpenses = expenseData != null
+
+    Box(
+        modifier = Modifier.height(56.dp), // Altura fija para que los "pills" verdes tengan espacio
+        contentAlignment = Alignment.TopCenter
+    ) {
+        if (hasExpenses) {
+            // CELDA ACTIVA (Píldora verde - image_02ef78.png)
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(40.dp)
+                    .background(AccentGreen, RoundedCornerShape(12.dp))
+                    .padding(vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = dayNumber, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    text = "${expenseData!!.transactions}\ntrans.",
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 10.sp
+                )
+            }
+        } else {
+            // CELDA INACTIVA (Cuadro con borde)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .border(1.dp, BorderSlate, RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = dayNumber, fontSize = 14.sp, color = TextDark)
+            }
+        }
+    }
+}
+
+@Composable
+fun SummaryRow(label: String, value: String, isHighlight: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 14.sp, color = TextMuted)
+        Text(
+            text = value,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (isHighlight) PrimaryBlue else TextDark
+        )
     }
 }

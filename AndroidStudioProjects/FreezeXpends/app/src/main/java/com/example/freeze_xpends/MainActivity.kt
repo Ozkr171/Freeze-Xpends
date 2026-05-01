@@ -3,8 +3,8 @@ package com.example.freeze_xpends
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -13,70 +13,95 @@ import com.example.freeze_xpends.screens.*
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent { AppNavigation() }
+        setContent {
+            AppNavigation()
+        }
     }
 }
 
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
-    var isPremium by remember { mutableStateOf(false) }
 
+    // Switch de estado global: Empieza en false (Free)
+    // rememberSaveable hace que no se resetee si giras la pantalla
+    var isPremium by rememberSaveable { mutableStateOf(false) }
 
-    NavHost(navController = navController, startDestination = "login") {
-
-        composable("login") {
+    NavHost(
+        navController = navController,
+        startDestination = "login"
+    ) {
+        // --- AUTH ---
+        // --- AUTH ---
+        composable(route = "login") {
             LoginScreen(
-                onNavigateToRegister = { navController.navigate("register") },
-                onNavigateToForgot = { navController.navigate("forgot_password") }, // <--- Conecta aquí
-                onLoginSuccess = { navController.navigate("home") { popUpTo("login") { inclusive = true } } },
-                onNavigateToPremium = { navController.navigate("premium") }
-            )
-        }
-        composable("forgot_password") {
-            ForgotPasswordScreen(
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        composable("register") {
-            RegisterScreen(onNavigateToLogin = { navController.navigate("login") })
-        }
-        composable("home") {
-            HomeScreen(
-                isPremium = isPremium,
-                onNavigateToSettings = { navController.navigate("settings") },
-                onNavigateToAdd = { navController.navigate("add_expense") },
-                onNavigateToCalendar = { navController.navigate("calendar") },
-                onNavigateToPremium = { navController.navigate("premium") } // Nuevo
-            )
-        }
-        composable("premium") {
-            PremiumScreen(
-                onAcceptPremium = {
-                    isPremium = true // Se activa la magia
-                    navController.popBackStack() // Te regresa a donde estabas
+                onNavigate = { route ->
+                    // Si vamos al home, limpiamos el login para que el botón de "Atrás" no los regrese aquí
+                    if (route == "home") {
+                        navController.navigate("home") {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    } else {
+                        navController.navigate(route)
+                    }
                 }
             )
         }
-        composable("settings") {
-            SettingsScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToProfile = { },
-                onNavigateToCalendar = { navController.navigate("calendar") },
-                onNavigateToBudget = { },
-                onNavigateToPremium = { navController.navigate("premium") },
-                onLogout = { navController.navigate("login") { popUpTo("home") { inclusive = true } } }
+
+        composable("register") {
+            RegisterScreen(onNavigateToLogin = { navController.popBackStack() })
+        }
+
+        // Dentro de tu NavHost en MainActivity.kt
+        composable("forgot-password") {
+            ForgotPasswordScreen(onNavigateBack = { navController.popBackStack() })
+        }
+
+        // --- APP PRINCIPAL ---
+        composable("home") {
+            HomeScreen(
+                isPremium = isPremium, // Pasamos el estado para quitar anuncios/candados
+                onNavigate = { route -> navController.navigate(route) }
             )
         }
+
+        composable("add-expense") {
+            AddExpenseScreen(
+                isPremium = isPremium, // Le pasas el estado global
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToPremium = { navController.navigate("premium") } // Lo manda a comprar si toca un candado
+            )
+        }
+
+        composable("settings") {
+            SettingsScreen(
+                isPremium = isPremium,
+                onNavigate = { route ->
+                    if (route == "back") navController.popBackStack()
+                    else navController.navigate(route)
+                }
+            )
+        }
+        composable("profile") {
+            ProfileScreen(onNavigateBack = { navController.popBackStack() })
+        }
+        composable("support") {
+            SupportScreen(onNavigateBack = { navController.popBackStack() })
+        }
+        composable("budget") { BudgetScreen(onNavigateBack = { navController.popBackStack() }) }
+        composable("calendar") { CalendarScreen(onNavigateBack = { navController.popBackStack() }) }
         composable("calendar") {
             CalendarScreen(onNavigateBack = { navController.popBackStack() })
         }
-        composable("add_expense") {
-            AddExpenseScreen(
-                isPremium = isPremium,
-                onNavigateBack = { navController.popBackStack() },
-                onNavigateToPremium = { navController.navigate("premium") }
+        // --- PREMIUM LOGIC ---
+        composable("premium") {
+            PremiumScreen(
+                onPurchaseSuccess = {
+                    isPremium = true
+                    navController.popBackStack()
+                },
+                onNavigate = { navController.popBackStack() }
+
             )
         }
     }

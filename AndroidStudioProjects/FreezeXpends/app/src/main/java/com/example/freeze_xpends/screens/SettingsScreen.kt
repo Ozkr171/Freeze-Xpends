@@ -1,16 +1,14 @@
 package com.example.freeze_xpends.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -22,103 +20,272 @@ import com.example.freeze_xpends.theme.*
 
 @Composable
 fun SettingsScreen(
-    onNavigateBack: () -> Unit,
-    onNavigateToProfile: () -> Unit,
-    onNavigateToCalendar: () -> Unit,
-    onNavigateToBudget: () -> Unit,
-    onNavigateToPremium: () -> Unit,
-    onLogout: () -> Unit
+    isPremium: Boolean,
+    onNavigate: (String) -> Unit
 ) {
+    // --- ESTADOS PARA LOS DIÁLOGOS ---
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundGray)
+            .background(BackgroundSlate)
     ) {
-        // HEADER
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = BluePrimary,
-            shadowElevation = 4.dp
+        // --- 1. HEADER AZUL ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(PrimaryBlue),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp).statusBarsPadding(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver", tint = Color.White)
-                }
-                Text("Ajustes", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = { onNavigate("back") }) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "Volver", tint = Color.White)
             }
+            Text(
+                text = "Ajustes",
+                modifier = Modifier.padding(start = 48.dp),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp)
                 .verticalScroll(rememberScrollState())
+                .padding(24.dp)
         ) {
-            Text("GENERAL", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateMuted, modifier = Modifier.padding(bottom = 8.dp))
-
+            // --- 2. TARJETA DE PERFIL ---
             Card(
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth().clickable { onNavigate("profile") },
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                border = BorderStroke(1.dp, BorderSlate),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Column {
-                    SettingsItem(Icons.Default.Person, "Perfil", onNavigateToProfile)
-                    Divider(color = BackgroundGray, thickness = 1.dp)
-                    // AQUÍ ESTÁ EL CALENDARIO COMO EN FIGMA
-                    SettingsItem(Icons.Default.DateRange, "Calendario", onNavigateToCalendar)
-                    Divider(color = BackgroundGray, thickness = 1.dp)
-                    SettingsItem(Icons.Default.PieChart, "Presupuestos", onNavigateToBudget)
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier.size(60.dp).background(PrimaryBlue, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("ER", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Eri", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("eri@email.com", fontSize = 12.sp, color = TextMuted)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = if (isPremium) AccentGreen.copy(0.1f) else BackgroundSlate,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = if (isPremium) "PRO" else "FREE",
+                                    color = if (isPremium) AccentGreen else TextMuted,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-            Text("CUENTA Y SEGURIDAD", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = SlateMuted, modifier = Modifier.padding(bottom = 8.dp))
 
+            // --- 3. MENÚ PRINCIPAL ---
             Card(
-                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color.White),
-                elevation = CardDefaults.cardElevation(2.dp)
+                border = BorderStroke(1.dp, BorderSlate),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Column {
-                    SettingsItem(Icons.Default.Star, "Premium", onNavigateToPremium)
-                    Divider(color = BackgroundGray, thickness = 1.dp)
-                    SettingsItem(Icons.Default.Notifications, "Notificaciones", {})
-                    Divider(color = BackgroundGray, thickness = 1.dp)
-                    SettingsItem(Icons.Default.Shield, "Seguridad", {})
+                    SettingsMenuRow(icon = Icons.Outlined.Person, title = "Perfil", onClick = { onNavigate("profile") })
+                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    SettingsMenuRow(
+                        icon = Icons.Outlined.AttachMoney,
+                        title = "Presupuesto (Gráficas)",
+                        isLocked = !isPremium,
+                        onClick = { if (isPremium) onNavigate("budget") else onNavigate("premium") }
+                    )
+                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    SettingsMenuRow(
+                        icon = Icons.Outlined.DateRange,
+                        title = "Calendario",
+                        isLocked = !isPremium,
+                        onClick = { if (isPremium) onNavigate("calendar") else onNavigate("premium") }
+                    )
+                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    SettingsMenuRow(icon = Icons.Outlined.HelpOutline, title = "Soporte", onClick = { onNavigate("support") })
+                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { onNavigate("premium") }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.WorkspacePremium, contentDescription = null, tint = SecondaryRed, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text("Hazte Premium", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextDark, modifier = Modifier.weight(1f))
+                        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Botón de Cerrar Sesión
-            Button(
-                onClick = onLogout,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                border = androidx.compose.foundation.BorderStroke(1.dp, RedSecondary)
+            // --- 4. PREFERENCIAS ---
+            Text("PREFERENCIAS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderSlate),
+                shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Cerrar Sesión", color = RedSecondary, fontWeight = FontWeight.Bold)
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clickable { if(!isPremium) onNavigate("premium") }.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Formato de visualización", fontSize = 12.sp, color = if (!isPremium) TextMuted else TextDark, fontWeight = FontWeight.Bold)
+                                if (!isPremium) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(Icons.Outlined.Lock, contentDescription = null, tint = SecondaryRed, modifier = Modifier.size(12.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier.fillMaxWidth().background(BackgroundSlate, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("100,000.10", color = TextMuted, fontSize = 14.sp)
+                                    Icon(Icons.Outlined.ArrowDropDown, contentDescription = null, tint = TextMuted)
+                                }
+                            }
+                        }
+                    }
+
+                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    SettingsMenuRow(icon = Icons.Outlined.Description, title = "Términos de uso", onClick = { /* Lógica términos */ })
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- 5. BOTONES PELIGROSOS ---
+
+            // Botón Eliminar Datos
+            OutlinedButton(
+                onClick = { showDeleteDialog = true },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                border = BorderStroke(1.dp, SecondaryRed),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Outlined.Delete, contentDescription = null, tint = SecondaryRed, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Eliminar Datos", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = SecondaryRed)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Botón Cerrar Sesión
+            OutlinedButton(
+                onClick = { showLogoutDialog = true },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                border = BorderStroke(1.dp, BorderSlate),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.ExitToApp, contentDescription = null, tint = TextMuted, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Cerrar Sesión", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextMuted)
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // --- DIÁLOGOS DE CONFIRMACIÓN ---
+
+            if (showDeleteDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteDialog = false },
+                    title = { Text("¿Eliminar todos los datos?", fontWeight = FontWeight.Bold) },
+                    text = { Text("Esta acción es permanente y no se puede deshacer. Se borrarán todos tus registros de la cuenta.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showDeleteDialog = false
+                                // Aiven/API logic here
+                            }
+                        ) {
+                            Text("Sí, eliminar", color = SecondaryRed, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteDialog = false }) {
+                            Text("Cancelar", color = TextMuted)
+                        }
+                    }
+                )
+            }
+
+            if (showLogoutDialog) {
+                AlertDialog(
+                    onDismissRequest = { showLogoutDialog = false },
+                    title = { Text("¿Cerrar sesión?", fontWeight = FontWeight.Bold) },
+                    text = { Text("Tendrás que ingresar tus credenciales la próxima vez que quieras entrar a la app.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showLogoutDialog = false
+                                onNavigate("login")
+                            }
+                        ) {
+                            Text("Cerrar Sesión", color = SecondaryRed, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showLogoutDialog = false }) {
+                            Text("Cancelar", color = TextMuted)
+                        }
+                    }
+                )
             }
         }
     }
 }
 
+// --- SUB-COMPONENTE FALTANTE (LA CAUSA DEL ERROR) ---
 @Composable
-fun SettingsItem(icon: ImageVector, label: String, onClick: () -> Unit) {
+fun SettingsMenuRow(
+    icon: ImageVector,
+    title: String,
+    isLocked: Boolean = false,
+    onClick: () -> Unit
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, contentDescription = null, tint = BluePrimary, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = null, tint = if (isLocked) TextMuted else PrimaryBlue, modifier = Modifier.size(20.dp))
         Spacer(modifier = Modifier.width(16.dp))
-        Text(label, fontSize = 16.sp, color = ForegroundDark, modifier = Modifier.weight(1f))
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SlateMuted)
+        Text(title, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = if (isLocked) TextMuted else TextDark, modifier = Modifier.weight(1f))
+
+        if (isLocked) {
+            Icon(Icons.Outlined.Lock, contentDescription = null, tint = SecondaryRed, modifier = Modifier.size(16.dp))
+        } else {
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(20.dp))
+        }
     }
 }

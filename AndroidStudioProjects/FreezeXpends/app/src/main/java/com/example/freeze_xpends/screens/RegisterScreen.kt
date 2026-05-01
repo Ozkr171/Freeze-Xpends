@@ -1,138 +1,138 @@
 package com.example.freeze_xpends.screens
 
-import androidx.compose.foundation.*
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.*
-import androidx.compose.ui.unit.*
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.theme.*
-import com.example.freeze_xpends.network.*
-import kotlinx.coroutines.launch
 
 @Composable
 fun RegisterScreen(onNavigateToLogin: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-
-    // Estados para visibilidad de contraseña
     var passwordVisible by remember { mutableStateOf(false) }
-    var confirmPasswordVisible by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    // Función de validación de seguridad
-    fun isPasswordSecure(pass: String): Boolean {
-        val pattern = "^(?=.*[A-Z])(?=.*[0-9]).{8,}$".toRegex()
-        return pattern.containsMatchIn(pass)
-    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundSlate)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Crear Cuenta",
+            fontSize = 32.sp,
+            fontWeight = FontWeight.Black,
+            color = PrimaryBlue
+        )
 
-    Box(modifier = Modifier.fillMaxSize().background(BackgroundGray).padding(horizontal = 24.dp)) {
-        Column(
-            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(48.dp))
+        Text(
+            text = "Regístrate para empezar a congelar tus gastos",
+            fontSize = 14.sp,
+            color = TextMuted,
+            modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
+        )
 
-            Surface(modifier = Modifier.size(80.dp), shape = CircleShape, color = BluePrimary, shadowElevation = 4.dp) {
-                Icon(Icons.Default.PersonAdd, null, modifier = Modifier.padding(20.dp), tint = Color.White)
-            }
+        // Campo de Nombre
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Nombre Completo") },
+            leadingIcon = { Icon(Icons.Default.Person, null) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryBlue, unfocusedBorderColor = BorderSlate)
+        )
 
-            Text("Crear Cuenta", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BluePrimary, modifier = Modifier.padding(top = 16.dp))
-            Text("Únete a FREEZE-XPENDS", color = SlateMuted, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(16.dp))
 
-            Card(modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
-                Column(modifier = Modifier.padding(24.dp)) {
+        // Campo de Email
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Correo Electrónico") },
+            leadingIcon = { Icon(Icons.Default.Email, null) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryBlue, unfocusedBorderColor = BorderSlate)
+        )
 
-                    if (errorMessage != null) {
-                        Surface(color = RedSecondary.copy(alpha = 0.1f), shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                            Text(errorMessage!!, color = RedSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(8.dp))
-                        }
-                    }
+        Spacer(modifier = Modifier.height(16.dp))
 
-                    Text("Nombre completo", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ForegroundDark)
-                    OutlinedTextField(value = name, onValueChange = { name = it }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), shape = RoundedCornerShape(12.dp), singleLine = true, colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BackgroundGray, focusedBorderColor = BluePrimary))
-
-                    Text("Email", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ForegroundDark)
-                    OutlinedTextField(value = email, onValueChange = { email = it }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp), shape = RoundedCornerShape(12.dp), singleLine = true, colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BackgroundGray, focusedBorderColor = BluePrimary))
-
-                    // CAMPO CONTRASEÑA CON OJO Y VALIDACIÓN
-                    Text("Contraseña", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ForegroundDark)
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = { password = it },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(image, null, tint = SlateMuted) }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BackgroundGray, focusedBorderColor = BluePrimary)
-                    )
-                    Text("Mín. 8 caracteres, 1 mayúscula y 1 número", fontSize = 10.sp, color = if(isPasswordSecure(password)) GreenAccent else SlateMuted, modifier = Modifier.padding(bottom = 12.dp, start = 4.dp))
-
-                    Text("Confirmar contraseña", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ForegroundDark)
-                    OutlinedTextField(
-                        value = confirmPassword,
-                        onValueChange = { confirmPassword = it },
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 24.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                        trailingIcon = {
-                            val image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                            IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) { Icon(image, null, tint = SlateMuted) }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BackgroundGray, focusedBorderColor = BluePrimary)
-                    )
-
-                    Button(
-                        onClick = {
-                            if (!isPasswordSecure(password)) {
-                                errorMessage = "La contraseña no cumple los requisitos de seguridad"
-                                return@Button
-                            }
-                            if (password != confirmPassword) {
-                                errorMessage = "Las contraseñas no coinciden"
-                                return@Button
-                            }
-                            scope.launch {
-                                isLoading = true
-                                errorMessage = null
-                                try {
-                                    val response = RetrofitClient.instance.registerUser(RegisterRequest(name, email, password))
-                                    if (response.isSuccessful) onNavigateToLogin()
-                                    else errorMessage = "El correo ya está registrado"
-                                } catch (e: Exception) {
-                                    errorMessage = "Sin conexión con el servidor"
-                                } finally { isLoading = false }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = BluePrimary),
-                        enabled = !isLoading
-                    ) {
-                        if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                        else Text("Registrarse", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedButton(onClick = onNavigateToLogin, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, BluePrimary)) {
-                        Text("Ya tengo cuenta", color = BluePrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    }
+        // Campo de Contraseña
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Contraseña") },
+            leadingIcon = { Icon(Icons.Default.Lock, null) },
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+            trailingIcon = {
+                val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(image, null)
                 }
-            }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryBlue, unfocusedBorderColor = BorderSlate)
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // --- BOTÓN CREAR CUENTA ---
+        Button(
+            onClick = {
+                if (name.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
+                    // Aquí después meteremos la lógica de Aiven
+                    Toast.makeText(context, "¡Cuenta creada con éxito!", Toast.LENGTH_SHORT).show()
+
+                    // ESTA ES LA MAGIA QUE TE FALTABA:
+                    onNavigateToLogin()
+                } else {
+                    Toast.makeText(context, "Por favor llena todos los campos", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("Crear Cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Row {
+            Text("¿Ya tienes cuenta? ", color = TextMuted)
+            Text(
+                text = "Inicia Sesión",
+                color = PrimaryBlue,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onNavigateToLogin() }
+            )
         }
     }
 }

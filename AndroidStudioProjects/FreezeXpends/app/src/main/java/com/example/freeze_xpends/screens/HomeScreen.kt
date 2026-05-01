@@ -1,16 +1,13 @@
 package com.example.freeze_xpends.screens
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,180 +15,267 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.theme.*
+import kotlinx.coroutines.launch
 
-data class Transaccion(
-    val id: Int, val concepto: String, val monto: Double, val fecha: String,
-    val tipo: String, val categoria: String, val plazo: String, val estado: String
-)
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     isPremium: Boolean,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToAdd: () -> Unit,
-    onNavigateToCalendar: () -> Unit,
-    onNavigateToPremium: () -> Unit // Nueva ruta
+    onNavigate: (String) -> Unit
 ) {
-    val transacciones = remember {
-        listOf(
-            Transaccion(1, "Salario Quincena", 10625.0, "01/09/25", "ingreso", "Salario", "QUINCENAL", "RECIBIDO"),
-            Transaccion(2, "Renta", 7000.0, "10/09/25", "gasto", "Vivienda", "MENSUAL", "PAGADO"),
-            Transaccion(3, "Spotify", 250.0, "14/09/25", "gasto", "Entretenimiento", "MENSUAL", "PAGADO")
-        )
-    }
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState()
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var transactionTypeExpense by remember { mutableStateOf(false) }
+    val misTransacciones = listOf("Salario", "Renta")
 
     Scaffold(
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNavigateToAdd, containerColor = RedSecondary, contentColor = Color.White,
-                shape = RoundedCornerShape(100.dp), icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Nuevo", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
-            )
-        }
-    ) { paddingValues ->
-        Column(modifier = Modifier.fillMaxSize().background(BackgroundGray).padding(paddingValues)) {
+            Button(
+                onClick = { onNavigate("add-expense") },
+                colors = ButtonDefaults.buttonColors(containerColor = SecondaryRed),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.height(60.dp).padding(bottom = 8.dp, end = 8.dp)
+            ) {
+                Icon(Icons.Default.Add, null, tint = Color.White)
+                Text(" Nuevo", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            }
+        },
+        containerColor = BackgroundSlate
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding)
+        ) {
+            // --- 1. HEADER AZUL (Debe ir HASTA ARRIBA) ---
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                        .background(PrimaryBlue)
+                        .padding(24.dp)
+                ) {
+                    if (!isPremium) {
+                        Surface(
+                            color = SecondaryRed,
+                            shape = RoundedCornerShape(bottomStart = 8.dp),
+                            modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-24).dp)
+                        ) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Lock, null, tint = Color.White, modifier = Modifier.size(10.dp))
+                                Text(" GRATIS", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
 
-            // HEADER AZUL
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Surface(modifier = Modifier.fillMaxWidth(), color = BluePrimary, shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp), shadowElevation = 8.dp) {
-                    Column(modifier = Modifier.padding(top = 40.dp, start = 24.dp, end = 24.dp, bottom = 24.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Column {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("BALANCE TOTAL", color = Color.White.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("$3,077", color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.ExtraBold)
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Surface(color = Color.White.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)) {
-                                    Text("Presupuesto: $21,250", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
-                                }
+                                Text("BALANCE TOTAL", color = Color.White.copy(0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("$3,077", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (isPremium) "ER ERI ⭐" else "ER ERI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Surface(onClick = onNavigateToSettings, color = Color.White, shape = RoundedCornerShape(12.dp), modifier = Modifier.size(40.dp)) {
-                                    Icon(Icons.Default.Settings, "Ajustes", tint = BluePrimary, modifier = Modifier.padding(8.dp))
+                                Text("ER ERI ", color = Color.White, fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { onNavigate("settings") }, modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp)).size(40.dp)) {
+                                    Icon(Icons.Default.Settings, null, tint = PrimaryBlue)
                                 }
                             }
+                        }
+
+                        Surface(color = Color.White.copy(0.2f), shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(top = 12.dp)) {
+                            Text("Presupuesto: $21,250", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 14.sp)
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SummaryCard("Ingresos", "$10,625", Icons.Default.TrendingUp, modifier = Modifier.weight(1f))
+                            SummaryCard("Gastos", "$7,548", Icons.Default.TrendingDown, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            // --- 2. ANUNCIO (Medio) ---
+            if (!isPremium) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("ANUNCIO PUBLICITARIO", fontSize = 10.sp, color = TextMuted)
+                        Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+                            Text("Espacio para Banner 320x50", color = TextMuted.copy(0.5f))
+                        }
+                        TextButton(onClick = { onNavigate("premium") }) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Delete, null, tint = SecondaryRed, modifier = Modifier.size(16.dp))
+                                Text(" Quitar anuncios", color = SecondaryRed, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- 3. TÍTULO TRANSACCIONES ---
+            item {
+                Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Transacciones", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    Surface(
+                        modifier = Modifier.clickable { if (!isPremium) onNavigate("premium") },
+                        border = BorderStroke(1.dp, BorderSlate),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(if (isPremium) Icons.Default.DateRange else Icons.Default.Lock, null, tint = if (isPremium) PrimaryBlue else SecondaryRed, modifier = Modifier.size(14.dp))
+                            Text(" Calendario", color = TextMuted, fontSize = 14.sp)
+                        }
+                    }
+                }
+            }
+
+            // --- 4. LISTA DE TARJETAS ---
+            item {
+                TransactionCard(
+                    title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen,
+                    onEditClick = {
+                        transactionTypeExpense = false
+                        showBottomSheet = true
+                    }
+                )
+            }
+            item {
+                TransactionCard(
+                    title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue,
+                    onEditClick = {
+                        transactionTypeExpense = true
+                        showBottomSheet = true
+                    }
+                )
+            }
+            // --- 4. LISTA DE TARJETAS O ESTADO VACÍO ---
+            if (misTransacciones.isEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 64.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(100.dp)
+                                .background(BorderSlate.copy(0.5f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.ReceiptLong, null, tint = TextMuted, modifier = Modifier.size(48.dp))
                         }
                         Spacer(modifier = Modifier.height(24.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Surface(modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp)) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.TrendingUp, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Ingresos", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("$10,625", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            Surface(modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(16.dp)) {
-                                Column(modifier = Modifier.padding(16.dp)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.TrendingDown, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Gastos", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text("$7,548", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                        Text(
+                            text = "Aún no hay movimientos",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextDark
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Toca el botón + para registrar tu\nprimer ingreso o gasto.",
+                            fontSize = 14.sp,
+                            color = TextMuted,
+                            textAlign = TextAlign.Center
+                        )
                     }
                 }
-
-                // ETIQUETA ROJA "GRATIS" EN LA ESQUINA
-                if (!isPremium) {
-                    Surface(color = RedSecondary, shape = RoundedCornerShape(bottomStart = 8.dp), modifier = Modifier.align(Alignment.TopEnd)) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Lock, null, tint = Color.White, modifier = Modifier.size(12.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("GRATIS", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
+            } else {
+                // ... Aquí van tus TransactionCard que ya tenías ...
+                item {
+                    TransactionCard(title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen, onEditClick = { transactionTypeExpense = false; showBottomSheet = true })
+                }
+                item {
+                    TransactionCard(title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue, onEditClick = { transactionTypeExpense = true; showBottomSheet = true })
                 }
             }
+        }
+    }
 
-            // BLOQUE DE ANUNCIOS (SOLO MODO FREE)
-            if (!isPremium) {
-                Column(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("ANUNCIO PUBLICITARIO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = SlateMuted)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Box(modifier = Modifier.fillMaxWidth(0.85f).height(60.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BackgroundGray, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
-                        Text("Espacio para Banner 320x50", color = SlateMuted.copy(alpha = 0.5f), fontWeight = FontWeight.Medium)
+    // --- MODAL BOTTOM SHEET ---
+    if (showBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showBottomSheet = false },
+            sheetState = sheetState,
+            containerColor = Color.White,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Black.copy(0.1f)) }
+        ) {
+            EditTransactionContent(
+                isPremium = isPremium,
+                isExpense = transactionTypeExpense,
+                onClose = {
+                    scope.launch { sheetState.hide() }.invokeOnCompletion {
+                        if (!sheetState.isVisible) showBottomSheet = false
                     }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(modifier = Modifier.clickable { onNavigateToPremium() }, verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Star, null, tint = RedSecondary, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Quitar anuncios", color = RedSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                },
+                onNavigateToPremium = {
+                    showBottomSheet = false
+                    onNavigate("premium")
+                },
+                onSaveClick = { /* Lógica guardar */ },
+                onDeleteClick = { /* Lógica eliminar */ }
+            )
+        }
+    }
+}
+
+@Composable
+fun SummaryCard(label: String, amount: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
+    Surface(modifier = modifier, color = Color.White.copy(0.1f), shape = RoundedCornerShape(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Icon(icon, null, tint = Color.White, modifier = Modifier.size(20.dp))
+            Text(label, color = Color.White.copy(0.8f), fontSize = 12.sp)
+            Text(amount, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+        }
+    }
+}
+
+@Composable
+fun TransactionCard(title: String, category: String, freq: String, amount: String, date: String, status: String, icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color, onEditClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(48.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                    Icon(icon, null, tint = iconColor)
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(color = BackgroundSlate, shape = RoundedCornerShape(4.dp)) {
+                            Text(category, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 10.sp, color = TextMuted)
+                        }
+                        Text(" $freq", fontSize = 10.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
                     }
                 }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(amount, fontWeight = FontWeight.Black, fontSize = 16.sp, color = if (amount.startsWith("+")) AccentGreen else TextDark)
+                    Text("Vence: $date", fontSize = 10.sp, color = TextMuted)
+                }
             }
-
-            // TÍTULO TRANSACCIONES + BOTÓN CALENDARIO (BLOQUEADO SI ES FREE)
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Transacciones", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = ForegroundDark)
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, if(isPremium) Color.Transparent else RedSecondary.copy(alpha=0.3f)),
-                    color = if(isPremium) Color.Transparent else Color.White,
-                    modifier = Modifier.clickable { if(isPremium) onNavigateToCalendar() else onNavigateToPremium() }
+            Divider(modifier = Modifier.padding(vertical = 12.dp), color = BorderSlate.copy(0.5f))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = if(status == "PENDIENTE") SecondaryRed.copy(0.1f) else AccentGreen.copy(0.1f), shape = RoundedCornerShape(8.dp)) {
+                    Text(status, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if(status == "PENDIENTE") SecondaryRed else AccentGreen)
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onEditClick() }
                 ) {
-                    Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(if(isPremium) Icons.Default.CalendarToday else Icons.Default.Lock, null, tint = if(isPremium) BluePrimary else RedSecondary, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Calendario", color = if(isPremium) BluePrimary else SlateMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-            }
-
-            // LISTA (Igual que antes)
-            LazyColumn(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 80.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(transacciones) { tx ->
-                    val isIngreso = tx.tipo == "ingreso"
-                    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp), border = BorderStroke(1.dp, SlateMuted.copy(alpha = 0.1f))) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                                Row(verticalAlignment = Alignment.Top, modifier = Modifier.weight(1f)) {
-                                    Box(modifier = Modifier.size(48.dp).clip(CircleShape).background(if(isIngreso) GreenAccent.copy(alpha=0.15f) else BluePrimary.copy(alpha=0.1f)), contentAlignment = Alignment.Center) {
-                                        Icon(if (isIngreso) Icons.Default.TrendingUp else Icons.Default.AttachMoney, null, tint = if(isIngreso) GreenAccent else BluePrimary)
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(tx.concepto, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = ForegroundDark)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(color = BackgroundGray, shape = RoundedCornerShape(4.dp)) { Text(tx.categoria, fontSize = 10.sp, color = SlateMuted, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) }
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Default.Refresh, null, tint = if(isIngreso) GreenAccent else BluePrimary, modifier = Modifier.size(10.dp))
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                Text(tx.plazo, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if(isIngreso) GreenAccent else BluePrimary)
-                                            }
-                                        }
-                                    }
-                                }
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text("${if(isIngreso) "+" else "-"}$${String.format("%,.0f", tx.monto)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = if(isIngreso) GreenAccent else ForegroundDark)
-                                    Text("Vence: ${tx.fecha}", color = SlateMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Surface(color = GreenAccent.copy(alpha = 0.15f), shape = RoundedCornerShape(100.dp)) { Text(tx.estado, color = GreenAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)) }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Edit, null, tint = SlateMuted, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Editar", color = SlateMuted, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                                }
-                            }
-                        }
-                    }
+                    Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(16.dp), tint = TextMuted)
+                    Text(" Editar", color = TextMuted, fontSize = 14.sp)
                 }
             }
         }

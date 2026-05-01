@@ -1,37 +1,38 @@
 package com.example.freeze_xpends.network
 
-import retrofit2.http.Body
-import retrofit2.http.POST
+import retrofit2.Response
+import retrofit2.http.*
 
-// Modelos para el Login (Deben coincidir con tu index.js)
-data class LoginRequest(
-    val correo_electronico: String, // Antes tenías 'email'
-    val contrasena: String          // Antes tenías 'pass'
-)
+// MODELOS DE DATOS
+data class LoginRequest(val correo_electronico: String, val contrasena: String)
+data class LoginResponse(val mensaje: String, val user_id: Int?, val nombre: String?, val premium: Int?)
 
-data class LoginResponse(
-    val mensaje: String,
-    val user_id: Int?,
-    val nombre: String?,
-    val premium: Int?
-)
+data class RegisterRequest(val nombre_s: String, val correo_electronico: String, val contrasena: String)
+data class RegisterResponse(val mensaje: String, val user_id: Int?)
 
-// Modelos para el Registro
-data class RegisterRequest(
-    val nombre_s: String,           // Campo exacto de tu index.js
-    val correo_electronico: String,
-    val contrasena: String
-)
+data class ForgotPasswordRequest(val correo_electronico: String)
+data class ResetPasswordRequest(val correo_electronico: String, val codigo: String, val nueva_contrasena: String)
 
-data class RegisterResponse(
-    val mensaje: String,
-    val user_id: Int?
-)
+data class Gasto(val monto_gasto: Double, val concepto: String, val categoria: String)
+data class GastoResponse(val gastos: List<Gasto>)
+data class Ingreso(val monto: Double)
 
 interface ApiService {
-    @POST("api/login") // Ruta completa según tu backend
-    suspend fun loginUser(@Body request: LoginRequest): retrofit2.Response<LoginResponse>
+    @POST("api/login")
+    suspend fun loginUser(@Body request: LoginRequest): Response<LoginResponse>
 
-    @POST("api/registro") // Ruta completa según tu backend
-    suspend fun registerUser(@Body request: RegisterRequest): retrofit2.Response<RegisterResponse>
+    @POST("api/registro")
+    suspend fun registerUser(@Body request: RegisterRequest): Response<RegisterResponse>
+
+    @POST("api/forgot-password")
+    suspend fun forgotPassword(@Body request: ForgotPasswordRequest): Response<Map<String, String>>
+
+    @POST("api/reset-password")
+    suspend fun resetPassword(@Body request: ResetPasswordRequest): Response<Map<String, String>>
+
+    @GET("api/gastos/{user_id}")
+    suspend fun getGastos(@Path("user_id") userId: Int): Response<GastoResponse>
+
+    @GET("api/ingresos/{user_id}")
+    suspend fun getIngresos(@Path("user_id") userId: Int): Response<List<Ingreso>>
 }

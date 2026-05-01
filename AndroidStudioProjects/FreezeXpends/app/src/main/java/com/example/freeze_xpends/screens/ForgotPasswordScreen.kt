@@ -1,145 +1,168 @@
 package com.example.freeze_xpends.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.LockReset
-import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.LockReset
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.theme.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ForgotPasswordScreen(
-    onNavigateBack: () -> Unit
-) {
+fun ForgotPasswordScreen(onNavigateBack: () -> Unit) {
     var email by remember { mutableStateOf("") }
-    var isSent by remember { mutableStateOf(false) } // Para cambiar de estado al enviar
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundGray)
+            .background(BackgroundSlate) // Fondo consistente con el resto de la app
     ) {
-        // HEADER
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = BluePrimary,
-            shadowElevation = 0.dp
+        // --- 1. HEADER AZUL ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .background(PrimaryBlue),
+            contentAlignment = Alignment.CenterStart
         ) {
-            Row(
-                modifier = Modifier.padding(top = 40.dp, bottom = 16.dp, start = 16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = Color.White)
-                }
-                Text("RECUPERAR ACCESO", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            IconButton(onClick = onNavigateBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.White)
             }
+            Text(
+                text = "Recuperar Contraseña",
+                modifier = Modifier.padding(start = 48.dp),
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
         }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!isSent) {
-                // --- ESTADO 1: PEDIR EMAIL ---
-                Surface(
-                    modifier = Modifier.size(80.dp),
-                    shape = CircleShape,
-                    color = BluePrimary.copy(alpha = 0.1f)
-                ) {
-                    Icon(Icons.Default.LockReset, null, tint = BluePrimary, modifier = Modifier.padding(20.dp))
-                }
+            Spacer(modifier = Modifier.height(32.dp))
 
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text("¿Olvidaste tu contraseña?", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ForegroundDark)
-                Text(
-                    "Ingresa tu correo electrónico para enviarte un enlace de recuperación.",
-                    fontSize = 14.sp, color = SlateMuted, textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            // --- 2. ICONO Y TEXTO DESCRIPTIVO ---
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(PrimaryBlue.copy(alpha = 0.1f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.LockReset,
+                    contentDescription = null,
+                    tint = PrimaryBlue,
+                    modifier = Modifier.size(40.dp)
                 )
+            }
 
-                Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Text("Email de la cuenta", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = ForegroundDark)
-                        OutlinedTextField(
-                            value = email,
-                            onValueChange = { email = it },
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            placeholder = { Text("tu@email.com", color = SlateMuted) },
-                            leadingIcon = { Icon(Icons.Default.Email, null, tint = BluePrimary) },
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BackgroundGray, focusedBorderColor = BluePrimary)
+            Text(
+                text = "¿Olvidaste tu contraseña?",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                color = TextDark,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = "No te preocupes. Ingresa el correo electrónico asociado a tu cuenta y te enviaremos un enlace para restablecerla.",
+                fontSize = 14.sp,
+                color = TextMuted,
+                textAlign = TextAlign.Center,
+                lineHeight = 20.sp,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            // --- 3. TARJETA DEL FORMULARIO ---
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, BorderSlate)
+            ) {
+                Column(modifier = Modifier.padding(24.dp)) {
+                    Text("Correo Electrónico", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
+
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = { email = it },
+                        placeholder = { Text("ejemplo@correo.com", color = TextMuted) },
+                        leadingIcon = { Icon(Icons.Outlined.Email, null, tint = TextMuted) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            unfocusedBorderColor = BorderSlate,
+                            focusedBorderColor = PrimaryBlue
                         )
+                    )
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
 
-                        Button(
-                            onClick = {
-                                if (email.isNotEmpty()) isSent = true
-                                // Aquí luego conectaremos el servicio de NodeMailer o Firebase Auth
-                            },
-                            modifier = Modifier.fillMaxWidth().height(56.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = BluePrimary)
-                        ) {
-                            Text("ENVIAR ENLACE", fontWeight = FontWeight.Bold)
-                        }
+                    // --- 4. BOTÓN ENVIAR ---
+                    Button(
+                        onClick = {
+                            if (email.isNotBlank() && android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                                // Aquí irá la conexión a tu API para enviar el correo real
+                                Toast.makeText(context, "Enlace enviado a $email", Toast.LENGTH_LONG).show()
+                                onNavigateBack() // Regresa al login después de enviar
+                            } else {
+                                Toast.makeText(context, "Por favor ingresa un correo válido", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Enviar Enlace", fontWeight = FontWeight.Black, fontSize = 16.sp, letterSpacing = 1.sp)
                     }
                 }
-            } else {
-                // --- ESTADO 2: CORREO ENVIADO ---
-                Surface(
-                    modifier = Modifier.size(100.dp),
-                    shape = CircleShape,
-                    color = GreenAccent.copy(alpha = 0.1f)
-                ) {
-                    Icon(Icons.Default.MarkEmailRead, null, tint = GreenAccent, modifier = Modifier.padding(24.dp))
-                }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-                Text("¡Revisa tu bandeja!", fontSize = 24.sp, fontWeight = FontWeight.Black, color = ForegroundDark)
+            // --- 5. VOLVER AL LOGIN ---
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("¿Recordaste tu contraseña? ", fontSize = 14.sp, color = TextMuted)
                 Text(
-                    "Hemos enviado instrucciones a:\n$email",
-                    fontSize = 14.sp, color = SlateMuted, textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                    text = "Inicia Sesión",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryBlue,
+                    modifier = Modifier.clickable { onNavigateBack() }
                 )
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Button(
-                    onClick = onNavigateBack,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = ForegroundDark)
-                ) {
-                    Text("VOLVER AL LOGIN", fontWeight = FontWeight.Bold)
-                }
             }
         }
     }
