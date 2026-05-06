@@ -180,10 +180,10 @@ fun CalendarScreen(onNavigateBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(16.dp))
 
                     SummaryRow(label = "Total de transacciones", value = totalTransactions.toString(), isHighlight = false)
-                    Divider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
+                    HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
 
                     SummaryRow(label = "Días con gastos", value = daysWithExpenses.toString(), isHighlight = false)
-                    Divider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
+                    HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f), modifier = Modifier.padding(vertical = 12.dp))
 
                     SummaryRow(label = "Promedio por día", value = "$${"%.0f".format(averagePerDay)}", isHighlight = true)
                 }

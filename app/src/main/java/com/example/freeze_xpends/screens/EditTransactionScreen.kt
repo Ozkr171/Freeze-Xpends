@@ -78,7 +78,7 @@ fun EditTransactionContent(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Divider(color = BorderSlate.copy(alpha = 0.5f))
+        HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f))
         Spacer(modifier = Modifier.height(16.dp))
 
         // --- 2. CONTENIDO SCROLLABLE ---
@@ -223,7 +223,7 @@ fun EditTransactionContent(
         ) {
             Icon(Icons.Outlined.Delete, null, tint = SecondaryRed, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Eliminar Ingreso", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = SecondaryRed)
+            Text(if (isExpense) "Eliminar Gasto" else "Eliminar Ingreso", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = SecondaryRed)
         }
     }
 }

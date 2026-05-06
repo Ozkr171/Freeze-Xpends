@@ -13,17 +13,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.theme.*
+import com.example.freeze_xpends.viewmodels.UserViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(onNavigateBack: () -> Unit) {
-    // Estados para los campos
-    var name by remember { mutableStateOf("Eri") }
-    var email by remember { mutableStateOf("eri@email.com") }
+fun ProfileScreen(
+    userViewModel: UserViewModel, // Agregamos el ViewModel como parámetro
+    onNavigateBack: () -> Unit
+) {
+    // Obtenemos el ID del usuario actual
+    val userId by userViewModel.userId.collectAsState()
+
+    // Estados para los campos (ahora se llenarán con la API)
+    var name by remember { mutableStateOf("Cargando...") }
+    var email by remember { mutableStateOf("siolasi21@gmail.com") } // Hardcoded por ahora o podrías traerlo en el login
     var phone by remember { mutableStateOf("+52 123 456 7890") }
 
     // Estado del Dropdown de Moneda
@@ -31,12 +39,28 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
     var selectedCurrency by remember { mutableStateOf("MXN - Peso Mexicano") }
     val currencies = listOf("MXN - Peso Mexicano", "USD - Dólar Estadounidense", "EUR - Euro")
 
+    val scope = rememberCoroutineScope()
+
+    // --- LOGICA DE CARGA REAL ---
+    LaunchedEffect(Unit) {
+        try {
+            val response = RetrofitClient.instance.getPerfil(userId)
+            if (response.isSuccessful && response.body() != null) {
+                val data = response.body()!!.data
+                name = data?.nombre_s ?: "Usuario"
+                // Aquí podrías actualizar más estados si tu tabla Usuario tuviera teléfono o moneda
+            }
+        } catch (e: Exception) {
+            // Error de conexión silencioso o podrías mostrar un Toast
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(BackgroundSlate)
     ) {
-        // --- 1. HEADER AZUL ---
+        // --- 1. HEADER AZUL (Diseño Original) ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -63,12 +87,11 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- 2. AVATAR CON BOTÓN DE CÁMARA (image_03dc38.png) ---
+            // --- 2. AVATAR DINÁMICO ---
             Box(
                 modifier = Modifier.size(120.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
-                // Círculo de Iniciales
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -76,13 +99,12 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "ER",
+                        text = if(name.length >= 2) name.take(2).uppercase() else "ER", // Dinámico según el nombre
                         color = Color.White,
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
-                // Botón verde de cámara
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -110,7 +132,6 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
                 border = BorderStroke(1.dp, BorderSlate)
             ) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    // Nombre
                     Text("Nombre completo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     OutlinedTextField(
                         value = name,
@@ -122,7 +143,6 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Email
                     Text("Email", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     OutlinedTextField(
                         value = email,
@@ -134,7 +154,6 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Teléfono
                     Text("Teléfono", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     OutlinedTextField(
                         value = phone,
@@ -146,7 +165,6 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Moneda Preferida (image_03dc32.png)
                     Text("Moneda preferida", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                     ExposedDropdownMenuBox(
                         expanded = expandedCurrency,
@@ -183,7 +201,9 @@ fun ProfileScreen(onNavigateBack: () -> Unit) {
 
             // --- 4. BOTÓN GUARDAR ---
             Button(
-                onClick = { /* Lógica de guardado */ },
+                onClick = {
+                    // Aquí después haremos el PUT para actualizar en Aiven
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),

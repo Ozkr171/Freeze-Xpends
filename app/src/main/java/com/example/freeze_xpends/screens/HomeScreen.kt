@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun HomeScreen(
     isPremium: Boolean,
+    userName: String, // Recibe el nombre desde la DB
     onNavigate: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -50,7 +51,7 @@ fun HomeScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            // --- 1. HEADER AZUL (Debe ir HASTA ARRIBA) ---
+            // --- 1. HEADER AZUL DINÁMICO ---
             item {
                 Box(
                     modifier = Modifier
@@ -73,13 +74,23 @@ fun HomeScreen(
                     }
 
                     Column {
+                        // Saludo con el primer nombre real
+                        Text(
+                            text = "¡Qué onda, ${userName.split(" ")[0]}!",
+                            color = Color.White,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
                                 Text("BALANCE TOTAL", color = Color.White.copy(0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Text("$3,077", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("ER ERI ", color = Color.White, fontWeight = FontWeight.Bold)
+                                // Pequeña etiqueta de usuario
+                                Text(userName.take(2).uppercase() + " ", color = Color.White, fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { onNavigate("settings") }, modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp)).size(40.dp)) {
                                     Icon(Icons.Default.Settings, null, tint = PrimaryBlue)
                                 }
@@ -100,7 +111,7 @@ fun HomeScreen(
                 }
             }
 
-            // --- 2. ANUNCIO (Medio) ---
+            // --- 2. ANUNCIO (Solo si no es Premium) ---
             if (!isPremium) {
                 item {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -135,71 +146,36 @@ fun HomeScreen(
                 }
             }
 
-            // --- 4. LISTA DE TARJETAS ---
-            item {
-                TransactionCard(
-                    title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen,
-                    onEditClick = {
-                        transactionTypeExpense = false
-                        showBottomSheet = true
-                    }
-                )
-            }
-            item {
-                TransactionCard(
-                    title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue,
-                    onEditClick = {
-                        transactionTypeExpense = true
-                        showBottomSheet = true
-                    }
-                )
-            }
-            // --- 4. LISTA DE TARJETAS O ESTADO VACÍO ---
+            // --- 4. LISTA DE MOVIMIENTOS ---
             if (misTransacciones.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 64.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(100.dp)
-                                .background(BorderSlate.copy(0.5f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(modifier = Modifier.size(100.dp).background(BorderSlate.copy(0.5f), CircleShape), contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.ReceiptLong, null, tint = TextMuted, modifier = Modifier.size(48.dp))
                         }
                         Spacer(modifier = Modifier.height(24.dp))
-                        Text(
-                            text = "Aún no hay movimientos",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextDark
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Toca el botón + para registrar tu\nprimer ingreso o gasto.",
-                            fontSize = 14.sp,
-                            color = TextMuted,
-                            textAlign = TextAlign.Center
-                        )
+                        Text(text = "Aún no hay movimientos", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                        Text(text = "Toca el botón + para registrar tu\nprimer ingreso o gasto.", fontSize = 14.sp, color = TextMuted, textAlign = TextAlign.Center)
                     }
                 }
             } else {
-                // ... Aquí van tus TransactionCard que ya tenías ...
                 item {
-                    TransactionCard(title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen, onEditClick = { transactionTypeExpense = false; showBottomSheet = true })
+                    TransactionCard(
+                        title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen,
+                        onEditClick = { transactionTypeExpense = false; showBottomSheet = true }
+                    )
                 }
                 item {
-                    TransactionCard(title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue, onEditClick = { transactionTypeExpense = true; showBottomSheet = true })
+                    TransactionCard(
+                        title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue,
+                        onEditClick = { transactionTypeExpense = true; showBottomSheet = true }
+                    )
                 }
             }
         }
     }
 
-    // --- MODAL BOTTOM SHEET ---
+    // --- MODAL BOTTOM SHEET PARA EDITAR ---
     if (showBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = { showBottomSheet = false },
@@ -225,6 +201,8 @@ fun HomeScreen(
         }
     }
 }
+
+// --- COMPONENTES AUXILIARES ---
 
 @Composable
 fun SummaryCard(label: String, amount: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
@@ -265,7 +243,7 @@ fun TransactionCard(title: String, category: String, freq: String, amount: Strin
                     Text("Vence: $date", fontSize = 10.sp, color = TextMuted)
                 }
             }
-            Divider(modifier = Modifier.padding(vertical = 12.dp), color = BorderSlate.copy(0.5f))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = BorderSlate.copy(0.5f))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Surface(color = if(status == "PENDIENTE") SecondaryRed.copy(0.1f) else AccentGreen.copy(0.1f), shape = RoundedCornerShape(8.dp)) {
                     Text(status, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if(status == "PENDIENTE") SecondaryRed else AccentGreen)

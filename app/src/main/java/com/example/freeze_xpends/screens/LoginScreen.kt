@@ -24,17 +24,23 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.freeze_xpends.network.LoginRequest
+import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.theme.*
-import kotlinx.coroutines.delay
+import com.example.freeze_xpends.utils.SessionManager
+import com.example.freeze_xpends.viewmodels.UserViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen(onNavigate: (String) -> Unit) {
+fun LoginScreen(
+    userViewModel: UserViewModel,
+    sessionManager: SessionManager,
+    onNavigate: (String) -> Unit
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
-    // --- NUEVO: ESTADO DE CARGA ---
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -97,16 +103,45 @@ fun LoginScreen(onNavigate: (String) -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // --- BOTÓN CON ESTADO DE CARGA ---
+        // --- BOTÓN CON CONEXIÓN REAL A LA API ---
         Button(
             onClick = {
                 if (email.isNotBlank() && password.isNotBlank()) {
-                    // Simulación de espera a la API de Aiven
                     scope.launch {
                         isLoading = true
-                        delay(1500) // Espera de 1.5 segundos
-                        isLoading = false
-                        onNavigate("home")
+                        try {
+                            val response = RetrofitClient.instance.loginUser(
+                                LoginRequest(email, password)
+                            )
+
+                            if (response.isSuccessful && response.body() != null) {
+                                val body = response.body()!!
+
+                                // Ahora checamos los datos directamente del cuerpo (body), no de 'data'
+                                if (body.user_id != null) {
+                                    sessionManager.saveSession(
+                                        userId = body.user_id,
+                                        nombre = body.nombre ?: "Usuario",
+                                        isPremium = body.premium == 1
+                                    )
+
+                                    userViewModel.setUsuario(
+                                        id = body.user_id,
+                                        nombreStr = body.nombre ?: "Usuario",
+                                        premium = body.premium == 1
+                                    )
+
+                                    Toast.makeText(context, "¡Qué onda, ${body.nombre}!", Toast.LENGTH_SHORT).show()
+                                    onNavigate("home")
+                                }
+                            } else {
+                                Toast.makeText(context, "Correo o contraseña mal, pa", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isLoading = false
+                        }
                     }
                 } else {
                     Toast.makeText(context, "Llena tus datos, pa", Toast.LENGTH_SHORT).show()
@@ -115,7 +150,7 @@ fun LoginScreen(onNavigate: (String) -> Unit) {
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
             shape = RoundedCornerShape(12.dp),
-            enabled = !isLoading // Deshabilita el botón mientras carga
+            enabled = !isLoading
         ) {
             if (isLoading) {
                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
@@ -126,7 +161,6 @@ fun LoginScreen(onNavigate: (String) -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Botón Registrarse
         OutlinedButton(
             onClick = { onNavigate("register") },
             modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -139,7 +173,6 @@ fun LoginScreen(onNavigate: (String) -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // Olvidaste contraseña
         Text(
             text = "¿Olvidaste tu contraseña?",
             color = PrimaryBlue,

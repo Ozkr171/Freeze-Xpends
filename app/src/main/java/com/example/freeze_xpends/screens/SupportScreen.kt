@@ -224,7 +224,7 @@ fun FaqItem(question: String, answer: String) {
             // Si está expandido, muestra la respuesta
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = BorderSlate.copy(alpha = 0.3f))
+                HorizontalDivider(color = BorderSlate.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = answer,

@@ -21,11 +21,16 @@ import com.example.freeze_xpends.theme.*
 @Composable
 fun SettingsScreen(
     isPremium: Boolean,
+    userName: String = "Eri", // Parámetro listo para recibir datos del UserViewModel
+    userEmail: String = "eri@email.com", // Parámetro listo para recibir datos del UserViewModel
     onNavigate: (String) -> Unit
 ) {
     // --- ESTADOS PARA LOS DIÁLOGOS ---
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
+
+    // Generador de iniciales dinámicas
+    val initials = if (userName.isNotBlank()) userName.take(2).uppercase() else "XX"
 
     Column(
         modifier = Modifier
@@ -73,13 +78,13 @@ fun SettingsScreen(
                         modifier = Modifier.size(60.dp).background(PrimaryBlue, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("ER", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text(initials, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Column {
-                        Text("Eri", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
+                        Text(userName, fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("eri@email.com", fontSize = 12.sp, color = TextMuted)
+                            Text(userEmail, fontSize = 12.sp, color = TextMuted)
                             Spacer(modifier = Modifier.width(8.dp))
                             Surface(
                                 color = if (isPremium) AccentGreen.copy(0.1f) else BackgroundSlate,
@@ -109,7 +114,7 @@ fun SettingsScreen(
             ) {
                 Column {
                     SettingsMenuRow(icon = Icons.Outlined.Person, title = "Perfil", onClick = { onNavigate("profile") })
-                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     SettingsMenuRow(
                         icon = Icons.Outlined.AttachMoney,
@@ -117,7 +122,7 @@ fun SettingsScreen(
                         isLocked = !isPremium,
                         onClick = { if (isPremium) onNavigate("budget") else onNavigate("premium") }
                     )
-                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     SettingsMenuRow(
                         icon = Icons.Outlined.DateRange,
@@ -125,10 +130,10 @@ fun SettingsScreen(
                         isLocked = !isPremium,
                         onClick = { if (isPremium) onNavigate("calendar") else onNavigate("premium") }
                     )
-                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     SettingsMenuRow(icon = Icons.Outlined.HelpOutline, title = "Soporte", onClick = { onNavigate("support") })
-                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth().clickable { onNavigate("premium") }.padding(16.dp),
@@ -178,7 +183,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    Divider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
+                    HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
                     SettingsMenuRow(icon = Icons.Outlined.Description, title = "Términos de uso", onClick = { /* Lógica términos */ })
                 }
             }
@@ -249,7 +254,7 @@ fun SettingsScreen(
                         TextButton(
                             onClick = {
                                 showLogoutDialog = false
-                                onNavigate("login")
+                                onNavigate("logout")
                             }
                         ) {
                             Text("Cerrar Sesión", color = SecondaryRed, fontWeight = FontWeight.Bold)
@@ -266,7 +271,6 @@ fun SettingsScreen(
     }
 }
 
-// --- SUB-COMPONENTE FALTANTE (LA CAUSA DEL ERROR) ---
 @Composable
 fun SettingsMenuRow(
     icon: ImageVector,
