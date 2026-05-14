@@ -12,7 +12,7 @@ object RetrofitClient {
     private const val IS_DEV = true
 
     // Tu IP local donde corre Node.js (Asegúrate de que no haya cambiado)
-    private const val DEV_URL = "http://192.168.100.80:3000/"
+    private const val DEV_URL = "http://192.168.0.59:3000/"
 
     // Aquí pondrás la URL de Render, Railway, Vercel, etc., en el futuro
     private const val PROD_URL = "https://tu-api-en-la-nube.onrender.com/"

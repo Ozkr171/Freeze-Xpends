@@ -14,7 +14,6 @@ import com.example.freeze_xpends.viewmodels.UserViewModel
 
 class MainActivity : ComponentActivity() {
 
-    // Inicializamos el ViewModel y el SessionManager
     private val userViewModel: UserViewModel by viewModels()
     private lateinit var sessionManager: SessionManager
 
@@ -24,17 +23,17 @@ class MainActivity : ComponentActivity() {
 
         // Cargar sesión persistente si existe
         if (sessionManager.isLoggedIn()) {
-            userViewModel.setUsuario(
+            userViewModel.setUserData( // <-- CORREGIDO A setUserData
                 id = sessionManager.getUserId(),
-                nombreStr = sessionManager.getNombre() ?: "Usuario",
-                premium = sessionManager.isPremium()
+                name = sessionManager.getNombre() ?: "Usuario",
+                email = sessionManager.getEmail(), // Recuperamos el email persistente
+                isPremium = sessionManager.isPremium()
             )
         }
 
         setContent {
-            // Observamos el estado del premium desde el ViewModel
             val isPremium by userViewModel.isPremium.collectAsState()
-            val userName by userViewModel.nombre.collectAsState()
+            val userName by userViewModel.userName.collectAsState() // <-- CORREGIDO DE 'nombre' A 'userName'
 
             AppNavigation(
                 userViewModel = userViewModel,
@@ -57,7 +56,6 @@ fun AppNavigation(
 
     NavHost(
         navController = navController,
-        // Si ya está logueado, mándalo directo al home, si no, al login
         startDestination = if (sessionManager.isLoggedIn()) "home" else "login"
     ) {
         composable("login") {
@@ -85,30 +83,33 @@ fun AppNavigation(
         }
 
         composable("home") {
+            val currentUserId = userViewModel.userId.collectAsState().value
+
             HomeScreen(
                 isPremium = isPremium,
                 userName = userName,
+                userId = currentUserId,
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
 
         composable("settings") {
+            val userEmail by userViewModel.userEmail.collectAsState()
+
             SettingsScreen(
-                isPremium = isPremium,
+                userEmail = userEmail,
                 userName = userName,
-                onNavigate = { route ->
-                    when (route) {
-                        "back" -> navController.popBackStack()
-                        "logout" -> {
-                            sessionManager.clearSession()
-                            userViewModel.logout()
-                            navController.navigate("login") {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }
-                        else -> navController.navigate(route)
+                isPremium = isPremium, // <-- CORREGIDO EL ERROR ROJO
+                onNavigateBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) }, // <-- CORREGIDO EL ERROR ROJO
+                onLogout = {
+                    sessionManager.clearSession()
+                    userViewModel.clearData()
+                    navController.navigate("login") {
+                        popUpTo(0) { inclusive = true }
                     }
-                }
+                },
+                onDeleteAccount = {  }
             )
         }
 
@@ -121,13 +122,13 @@ fun AppNavigation(
 
         composable("add-expense") {
             AddExpenseScreen(
-                userViewModel = userViewModel, // <--- No olvides pasarle esto
+                userViewModel = userViewModel,
                 isPremium = isPremium,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToPremium = { navController.navigate("premium") }
             )
         }
-        // ... El resto de tus rutas (calendar, budget, etc) se quedan igual ...
+
         composable("calendar") { CalendarScreen(onNavigateBack = { navController.popBackStack() }) }
         composable("budget") { BudgetScreen(onNavigateBack = { navController.popBackStack() }) }
         composable("support") { SupportScreen(onNavigateBack = { navController.popBackStack() }) }
@@ -135,11 +136,18 @@ fun AppNavigation(
         composable("premium") {
             PremiumScreen(
                 onPurchaseSuccess = {
-                    userViewModel.setPremium(true)
+                    // Actualizamos usando setUserData
+                    userViewModel.setUserData(
+                        id = userViewModel.userId.value,
+                        name = userViewModel.userName.value,
+                        email = userViewModel.userEmail.value,
+                        isPremium = true
+                    )
                     sessionManager.saveSession(
-                        userViewModel.userId.value,
-                        userViewModel.nombre.value,
-                        true
+                        userId = userViewModel.userId.value,
+                        nombre = userViewModel.userName.value,
+                        email = userViewModel.userEmail.value,
+                        isPremium = true
                     )
                     navController.popBackStack()
                 },

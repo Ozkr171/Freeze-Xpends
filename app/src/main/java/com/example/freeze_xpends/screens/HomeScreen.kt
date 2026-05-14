@@ -3,6 +3,7 @@ package com.example.freeze_xpends.screens
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,21 +19,94 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.theme.*
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Locale
+
+// --- CLASE AUXILIAR PARA JUNTAR GASTOS E INGRESOS EN LA LISTA ---
+data class TransaccionItem(
+    val id: Int,
+    val isGasto: Boolean,
+    val titulo: String,
+    val categoria: String,
+    val monto: Double,
+    val fecha: String,
+    val frecuencia: String,
+    val status: String
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     isPremium: Boolean,
-    userName: String, // Recibe el nombre desde la DB
+    userName: String,
+    userId: Int, // <-- NECESITAMOS EL ID PARA TRAER LOS DATOS
     onNavigate: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState()
     var showBottomSheet by remember { mutableStateOf(false) }
     var transactionTypeExpense by remember { mutableStateOf(false) }
-    val misTransacciones = listOf("Salario", "Renta")
+
+    // --- ESTADOS PARA LOS DATOS REALES ---
+    var transacciones by remember { mutableStateOf<List<TransaccionItem>>(emptyList()) }
+    var totalIngresos by remember { mutableStateOf(0.0) }
+    var totalGastos by remember { mutableStateOf(0.0) }
+    var balanceTotal by remember { mutableStateOf(0.0) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Formateador de dinero (ej. $1,000.00)
+    val moneyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
+
+    // --- CARGAR DATOS DESDE AIVEN ---
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            // 1. Traer Gastos
+            val responseGastos = RetrofitClient.instance.getGastos(userId)
+            val listaGastos = responseGastos.body()?.data ?: emptyList()
+
+            // 2. Traer Ingresos
+            val responseIngresos = RetrofitClient.instance.getIngresos(userId)
+            val listaIngresos = responseIngresos.body()?.data ?: emptyList()
+
+            // 3. Hacer los cálculos
+            val sumaGastos = listaGastos.sumOf { it.monto_gasto }
+            val sumaIngresos = listaIngresos.sumOf { it.monto }
+
+            totalGastos = sumaGastos
+            totalIngresos = sumaIngresos
+            balanceTotal = sumaIngresos - sumaGastos
+
+            // 4. Transformar y juntar las listas para pintarlas
+            val itemsGastos = listaGastos.map {
+                TransaccionItem(
+                    id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
+                    categoria = "Gasto", // Fase 2: Conectar nombre de categoría real
+                    monto = it.monto_gasto, fecha = it.fecha_gasto.substringBefore("T"),
+                    frecuencia = it.plazo ?: "ÚNICO", status = "PAGADO"
+                )
+            }
+            val itemsIngresos = listaIngresos.map {
+                TransaccionItem(
+                    id = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
+                    categoria = it.nombre_categoria ?: "Ingreso",
+                    monto = it.monto, fecha = it.fecha_ingreso.substringBefore("T"),
+                    frecuencia = "ÚNICO", status = if(it.recibido == 1) "RECIBIDO" else "PENDIENTE"
+                )
+            }
+
+            // Unimos todo y lo ordenamos por fecha (del más nuevo al más viejo)
+            transacciones = (itemsGastos + itemsIngresos).sortedByDescending { it.fecha }
+
+        } catch (e: Exception) {
+            println("Error al cargar datos: ${e.message}")
+        } finally {
+            isLoading = false
+        }
+    }
 
     Scaffold(
         floatingActionButton = {
@@ -48,24 +122,15 @@ fun HomeScreen(
         },
         containerColor = BackgroundSlate
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding)
-        ) {
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
             // --- 1. HEADER AZUL DINÁMICO ---
             item {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                        .background(PrimaryBlue)
-                        .padding(24.dp)
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                        .background(PrimaryBlue).padding(24.dp)
                 ) {
                     if (!isPremium) {
-                        Surface(
-                            color = SecondaryRed,
-                            shape = RoundedCornerShape(bottomStart = 8.dp),
-                            modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-24).dp)
-                        ) {
+                        Surface(color = SecondaryRed, shape = RoundedCornerShape(bottomStart = 8.dp), modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-24).dp)) {
                             Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Lock, null, tint = Color.White, modifier = Modifier.size(10.dp))
                                 Text(" GRATIS", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -74,38 +139,26 @@ fun HomeScreen(
                     }
 
                     Column {
-                        // Saludo con el primer nombre real
-                        Text(
-                            text = "¡Qué onda, ${userName.split(" ")[0]}!",
-                            color = Color.White,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
+                        Text(text = "¡Qué onda, ${userName.split(" ")[0]}!", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
                                 Text("BALANCE TOTAL", color = Color.White.copy(0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("$3,077", color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
+                                Text(moneyFormatter.format(balanceTotal), color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                // Pequeña etiqueta de usuario
-                                Text(userName.take(2).uppercase() + " ", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text(if(userName.isNotBlank()) userName.take(2).uppercase() + " " else "XX ", color = Color.White, fontWeight = FontWeight.Bold)
                                 IconButton(onClick = { onNavigate("settings") }, modifier = Modifier.background(Color.White, RoundedCornerShape(12.dp)).size(40.dp)) {
                                     Icon(Icons.Default.Settings, null, tint = PrimaryBlue)
                                 }
                             }
                         }
 
-                        Surface(color = Color.White.copy(0.2f), shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(top = 12.dp)) {
-                            Text("Presupuesto: $21,250", color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 14.sp)
-                        }
-
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SummaryCard("Ingresos", "$10,625", Icons.Default.TrendingUp, modifier = Modifier.weight(1f))
-                            SummaryCard("Gastos", "$7,548", Icons.Default.TrendingDown, modifier = Modifier.weight(1f))
+                            SummaryCard("Ingresos", moneyFormatter.format(totalIngresos), Icons.Default.TrendingUp, modifier = Modifier.weight(1f))
+                            SummaryCard("Gastos", moneyFormatter.format(totalGastos), Icons.Default.TrendingDown, modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -133,21 +186,17 @@ fun HomeScreen(
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Transacciones", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                    Surface(
-                        modifier = Modifier.clickable { if (!isPremium) onNavigate("premium") },
-                        border = BorderStroke(1.dp, BorderSlate),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (isPremium) Icons.Default.DateRange else Icons.Default.Lock, null, tint = if (isPremium) PrimaryBlue else SecondaryRed, modifier = Modifier.size(14.dp))
-                            Text(" Calendario", color = TextMuted, fontSize = 14.sp)
-                        }
-                    }
                 }
             }
 
             // --- 4. LISTA DE MOVIMIENTOS ---
-            if (misTransacciones.isEmpty()) {
+            if (isLoading) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = PrimaryBlue)
+                    }
+                }
+            } else if (transacciones.isEmpty()) {
                 item {
                     Column(modifier = Modifier.fillMaxWidth().padding(top = 64.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(modifier = Modifier.size(100.dp).background(BorderSlate.copy(0.5f), CircleShape), contentAlignment = Alignment.Center) {
@@ -159,50 +208,30 @@ fun HomeScreen(
                     }
                 }
             } else {
-                item {
+                items(transacciones) { t ->
+                    val sign = if (t.isGasto) "-" else "+"
+                    val moneyText = "$sign${moneyFormatter.format(t.monto)}"
+                    val iconColor = if (t.isGasto) SecondaryRed else AccentGreen
+                    val iconImage = if (t.isGasto) Icons.Default.TrendingDown else Icons.Default.TrendingUp
+
                     TransactionCard(
-                        title = "Salario Quincena", category = "Salario", freq = "QUINCENAL", amount = "+$10,625", date = "01/09/25", status = "RECIBIDO", icon = Icons.Default.TrendingUp, iconColor = AccentGreen,
-                        onEditClick = { transactionTypeExpense = false; showBottomSheet = true }
-                    )
-                }
-                item {
-                    TransactionCard(
-                        title = "Renta", category = "Vivienda", freq = "MENSUAL", amount = "-$7,000", date = "10/09/25", status = "PAGADO", icon = Icons.Default.AttachMoney, iconColor = PrimaryBlue,
-                        onEditClick = { transactionTypeExpense = true; showBottomSheet = true }
+                        title = t.titulo, category = t.categoria, freq = t.frecuencia, amount = moneyText,
+                        date = t.fecha, status = t.status, icon = iconImage, iconColor = iconColor,
+                        onEditClick = { transactionTypeExpense = t.isGasto; showBottomSheet = true }
                     )
                 }
             }
+            item { Spacer(modifier = Modifier.height(80.dp)) }
         }
     }
 
-    // --- MODAL BOTTOM SHEET PARA EDITAR ---
+    // Modal (Se queda igual por ahora)
     if (showBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
-            sheetState = sheetState,
-            containerColor = Color.White,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Black.copy(0.1f)) }
-        ) {
-            EditTransactionContent(
-                isPremium = isPremium,
-                isExpense = transactionTypeExpense,
-                onClose = {
-                    scope.launch { sheetState.hide() }.invokeOnCompletion {
-                        if (!sheetState.isVisible) showBottomSheet = false
-                    }
-                },
-                onNavigateToPremium = {
-                    showBottomSheet = false
-                    onNavigate("premium")
-                },
-                onSaveClick = { /* Lógica guardar */ },
-                onDeleteClick = { /* Lógica eliminar */ }
-            )
+        ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = sheetState, containerColor = Color.White) {
+            EditTransactionContent(isPremium, transactionTypeExpense, onClose = { scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false } }, onNavigateToPremium = { showBottomSheet = false; onNavigate("premium") }, onSaveClick = {}, onDeleteClick = {})
         }
     }
 }
-
-// --- COMPONENTES AUXILIARES ---
 
 @Composable
 fun SummaryCard(label: String, amount: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
@@ -240,20 +269,7 @@ fun TransactionCard(title: String, category: String, freq: String, amount: Strin
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(amount, fontWeight = FontWeight.Black, fontSize = 16.sp, color = if (amount.startsWith("+")) AccentGreen else TextDark)
-                    Text("Vence: $date", fontSize = 10.sp, color = TextMuted)
-                }
-            }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = BorderSlate.copy(0.5f))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = if(status == "PENDIENTE") SecondaryRed.copy(0.1f) else AccentGreen.copy(0.1f), shape = RoundedCornerShape(8.dp)) {
-                    Text(status, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if(status == "PENDIENTE") SecondaryRed else AccentGreen)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { onEditClick() }
-                ) {
-                    Icon(Icons.Outlined.Edit, null, modifier = Modifier.size(16.dp), tint = TextMuted)
-                    Text(" Editar", color = TextMuted, fontSize = 14.sp)
+                    Text(date, fontSize = 10.sp, color = TextMuted)
                 }
             }
         }

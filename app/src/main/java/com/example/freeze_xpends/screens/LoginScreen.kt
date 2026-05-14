@@ -53,30 +53,14 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(
-            text = "FREEZE-XPENDS",
-            fontSize = 32.sp,
-            fontWeight = FontWeight.Black,
-            color = PrimaryBlue,
-            letterSpacing = 2.sp
-        )
-
-        Text(
-            text = "Congela tus gastos, controla tu futuro",
-            fontSize = 14.sp,
-            color = TextMuted,
-            modifier = Modifier.padding(top = 8.dp, bottom = 48.dp)
-        )
+        Text("FREEZE-XPENDS", fontSize = 32.sp, fontWeight = FontWeight.Black, color = PrimaryBlue, letterSpacing = 2.sp)
+        Text("Congela tus gastos, controla tu futuro", fontSize = 14.sp, color = TextMuted, modifier = Modifier.padding(top = 8.dp, bottom = 48.dp))
 
         // Campo Email
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Correo Electrónico") },
-            leadingIcon = { Icon(Icons.Default.Email, null) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            value = email, onValueChange = { email = it }, label = { Text("Correo Electrónico") },
+            leadingIcon = { Icon(Icons.Default.Email, null) }, modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryBlue, unfocusedBorderColor = BorderSlate)
         )
 
@@ -84,19 +68,14 @@ fun LoginScreen(
 
         // Campo Contraseña
         OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Contraseña") },
+            value = password, onValueChange = { password = it }, label = { Text("Contraseña") },
             leadingIcon = { Icon(Icons.Default.Lock, null) },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(image, null)
-                }
+                IconButton(onClick = { passwordVisible = !passwordVisible }) { Icon(image, null) }
             },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PrimaryBlue, unfocusedBorderColor = BorderSlate)
         )
@@ -110,32 +89,37 @@ fun LoginScreen(
                     scope.launch {
                         isLoading = true
                         try {
-                            val response = RetrofitClient.instance.loginUser(
-                                LoginRequest(email, password)
-                            )
+                            // AQUÍ CORREGIMOS EL ERROR DE LA DOBLE VARIABLE
+                            val response = RetrofitClient.instance.loginUser(LoginRequest(email.trim(), password.trim()))
 
-                            if (response.isSuccessful && response.body() != null) {
-                                val body = response.body()!!
+                            if (response.isSuccessful) {
+                                val body = response.body()
+                                if (body?.data != null) {
+                                    val userData = body.data
 
-                                // Ahora checamos los datos directamente del cuerpo (body), no de 'data'
-                                if (body.user_id != null) {
+                                    // 1. Guardamos en SharedPreferences usando la función correcta
                                     sessionManager.saveSession(
-                                        userId = body.user_id,
-                                        nombre = body.nombre ?: "Usuario",
-                                        isPremium = body.premium == 1
+                                        userId = userData.user_id,
+                                        nombre = userData.nombre ?: "Usuario",
+                                        email = email,
+                                        isPremium = userData.premium == 1
                                     )
 
-                                    userViewModel.setUsuario(
-                                        id = body.user_id,
-                                        nombreStr = body.nombre ?: "Usuario",
-                                        premium = body.premium == 1
+                                    // 2. Guardamos en el ViewModel
+                                    userViewModel.setUserData(
+                                        id = userData.user_id,
+                                        name = userData.nombre ?: "Usuario",
+                                        email = email,
+                                        isPremium = userData.premium == 1
                                     )
 
-                                    Toast.makeText(context, "¡Qué onda, ${body.nombre}!", Toast.LENGTH_SHORT).show()
-                                    onNavigate("home")
+                                    Toast.makeText(context, "¡Bienvenido, ${userData.nombre}!", Toast.LENGTH_SHORT).show()
+                                    onNavigate("home") // AQUÍ CORREGIMOS LA NAVEGACIÓN
+                                } else {
+                                    Toast.makeText(context, "Error leyendo los datos", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                Toast.makeText(context, "Correo o contraseña mal, pa", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Credenciales incorrectas", Toast.LENGTH_SHORT).show()
                             }
                         } catch (e: Exception) {
                             Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
@@ -152,32 +136,20 @@ fun LoginScreen(
             shape = RoundedCornerShape(12.dp),
             enabled = !isLoading
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
-            } else {
-                Text("Iniciar Sesión", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            }
+            if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
+            else Text("Iniciar Sesión", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedButton(
-            onClick = { onNavigate("register") },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
+            onClick = { onNavigate("register") }, modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue),
             border = BorderStroke(1.dp, PrimaryBlue)
-        ) {
-            Text("¿No tienes cuenta? Regístrate", fontWeight = FontWeight.Bold)
-        }
+        ) { Text("¿No tienes cuenta? Regístrate", fontWeight = FontWeight.Bold) }
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = "¿Olvidaste tu contraseña?",
-            color = PrimaryBlue,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable { onNavigate("forgot-password") }
-        )
+        Text("¿Olvidaste tu contraseña?", color = PrimaryBlue, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onNavigate("forgot-password") })
     }
 }

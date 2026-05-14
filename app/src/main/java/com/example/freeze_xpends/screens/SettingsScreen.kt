@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,10 +22,13 @@ import com.example.freeze_xpends.theme.*
 
 @Composable
 fun SettingsScreen(
+    userName: String, // <--- 1. AGREGAMOS ESTE PARÁMETRO
+    userEmail: String,
     isPremium: Boolean,
-    userName: String = "Eri", // Parámetro listo para recibir datos del UserViewModel
-    userEmail: String = "eri@email.com", // Parámetro listo para recibir datos del UserViewModel
-    onNavigate: (String) -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigate: (String) -> Unit,
+    onLogout: () -> Unit,
+    onDeleteAccount: () -> Unit
 ) {
     // --- ESTADOS PARA LOS DIÁLOGOS ---
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -45,8 +50,8 @@ fun SettingsScreen(
                 .background(PrimaryBlue),
             contentAlignment = Alignment.CenterStart
         ) {
-            IconButton(onClick = { onNavigate("back") }) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "Volver", tint = Color.White)
+            IconButton(onClick = onNavigateBack) { // <--- CORREGIMOS EL BOTÓN DE ATRÁS
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = Color.White) // <--- ICONO ACTUALIZADO
             }
             Text(
                 text = "Ajustes",
@@ -132,7 +137,7 @@ fun SettingsScreen(
                     )
                     HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
-                    SettingsMenuRow(icon = Icons.Outlined.HelpOutline, title = "Soporte", onClick = { onNavigate("support") })
+                    SettingsMenuRow(icon = Icons.AutoMirrored.Outlined.HelpOutline, title = "Soporte", onClick = { onNavigate("support") }) // <--- ICONO ACTUALIZADO
                     HorizontalDivider(color = BorderSlate.copy(0.5f), modifier = Modifier.padding(horizontal = 16.dp))
 
                     Row(
@@ -231,7 +236,7 @@ fun SettingsScreen(
                         TextButton(
                             onClick = {
                                 showDeleteDialog = false
-                                // Aiven/API logic here
+                                onDeleteAccount() // <--- USAMOS LA FUNCIÓN CORRECTA
                             }
                         ) {
                             Text("Sí, eliminar", color = SecondaryRed, fontWeight = FontWeight.Bold)
@@ -254,7 +259,7 @@ fun SettingsScreen(
                         TextButton(
                             onClick = {
                                 showLogoutDialog = false
-                                onNavigate("logout")
+                                onLogout() // <--- USAMOS LA FUNCIÓN CORRECTA
                             }
                         ) {
                             Text("Cerrar Sesión", color = SecondaryRed, fontWeight = FontWeight.Bold)

@@ -24,7 +24,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.freeze_xpends.network.RegisterRequest
+import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun RegisterScreen(onNavigateToLogin: () -> Unit) {
@@ -32,6 +35,10 @@ fun RegisterScreen(onNavigateToLogin: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
+
+    // --- NUEVOS ESTADOS PARA LA API ---
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     Column(
@@ -103,24 +110,50 @@ fun RegisterScreen(onNavigateToLogin: () -> Unit) {
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // --- BOTÓN CREAR CUENTA ---
+        // --- BOTÓN CREAR CUENTA CON CONEXIÓN A API ---
         Button(
             onClick = {
                 if (name.isNotBlank() && email.isNotBlank() && password.isNotBlank()) {
-                    // Aquí después meteremos la lógica de Aiven
-                    Toast.makeText(context, "¡Cuenta creada con éxito!", Toast.LENGTH_SHORT).show()
+                    scope.launch {
+                        isLoading = true
+                        try {
+                            val response = RetrofitClient.instance.registerUser(
+                                RegisterRequest(
+                                    nombre_s = name.trim(),
+                                    correo_electronico = email.trim(),
+                                    contrasena = password.trim()
+                                )
+                            )
 
-                    // ESTA ES LA MAGIA QUE TE FALTABA:
-                    onNavigateToLogin()
+                            if (response.isSuccessful) {
+                                Toast.makeText(context, "¡Cuenta creada con éxito!", Toast.LENGTH_SHORT).show()
+                                // Si todo sale bien, lo mandamos al Login para que inicie sesión
+                                onNavigateToLogin()
+                            } else {
+                                // Si Node.js devuelve un 400 (correo duplicado) o 500
+                                val errorMsg = if (response.code() == 400) "Ese correo ya está en uso." else "Error en el servidor al registrar."
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error de conexión: ${e.message}", Toast.LENGTH_LONG).show()
+                        } finally {
+                            isLoading = false
+                        }
+                    }
                 } else {
                     Toast.makeText(context, "Por favor llena todos los campos", Toast.LENGTH_SHORT).show()
                 }
             },
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
+            enabled = !isLoading // Evita que piquen 2 veces mientras carga
         ) {
-            Text("Crear Cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
+            } else {
+                Text("Crear Cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -131,7 +164,7 @@ fun RegisterScreen(onNavigateToLogin: () -> Unit) {
                 text = "Inicia Sesión",
                 color = PrimaryBlue,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable { onNavigateToLogin() }
+                modifier = Modifier.clickable { if (!isLoading) onNavigateToLogin() }
             )
         }
     }

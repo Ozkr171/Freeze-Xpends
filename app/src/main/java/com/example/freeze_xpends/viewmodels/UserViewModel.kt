@@ -9,25 +9,27 @@ class UserViewModel : ViewModel() {
     private val _userId = MutableStateFlow(-1)
     val userId: StateFlow<Int> = _userId.asStateFlow()
 
-    private val _nombre = MutableStateFlow("")
-    val nombre: StateFlow<String> = _nombre.asStateFlow()
+    private val _userName = MutableStateFlow("")
+    val userName: StateFlow<String> = _userName.asStateFlow()
+
+    private val _userEmail = MutableStateFlow("")
+    val userEmail: StateFlow<String> = _userEmail.asStateFlow()
 
     private val _isPremium = MutableStateFlow(false)
     val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
-    fun setUsuario(id: Int, nombreStr: String, premium: Boolean) {
+    // Actualizamos la función para recibir el correo
+    fun setUserData(id: Int, name: String, email: String, isPremium: Boolean) {
         _userId.value = id
-        _nombre.value = nombreStr
-        _isPremium.value = premium
+        _userName.value = name
+        _userEmail.value = email
+        _isPremium.value = isPremium
     }
 
-    fun setPremium(premium: Boolean) {
-        _isPremium.value = premium
-    }
-
-    fun logout() {
+    fun clearData() {
         _userId.value = -1
-        _nombre.value = ""
+        _userName.value = ""
+        _userEmail.value = ""
         _isPremium.value = false
     }
 }

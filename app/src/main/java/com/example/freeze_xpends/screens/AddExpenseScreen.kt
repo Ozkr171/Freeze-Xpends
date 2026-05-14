@@ -21,7 +21,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.network.RetrofitClient
-import com.example.freeze_xpends.network.TransactionRequest
+import com.example.freeze_xpends.network.GastoRequest // <-- Importamos los nuevos
+import com.example.freeze_xpends.network.IngresoRequest // <-- Importamos los nuevos
 import com.example.freeze_xpends.theme.*
 import com.example.freeze_xpends.viewmodels.UserViewModel
 import kotlinx.coroutines.launch
@@ -37,36 +38,42 @@ fun AddExpenseScreen(
     val userId by userViewModel.userId.collectAsState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    var isLoading by remember { mutableStateOf(false) }
 
+    // --- ESTADOS DE DATOS ---
     var isExpense by remember { mutableStateOf(true) }
-    val primaryColor = if (isExpense) SecondaryRed else AccentGreen
-    val headerTitle = if (isExpense) "NUEVO GASTO" else "NUEVO INGRESO"
-
     var amount by remember { mutableStateOf("") }
     var concept by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("2026-05-06") }
+    var date by remember { mutableStateOf("2026-05-14") }
+    var isLoading by remember { mutableStateOf(false) }
 
-    // --- ESTADOS PREMIUM ---
-    var expandedFrequency by remember { mutableStateOf(false) }
-    var selectedFrequency by remember { mutableStateOf("Pago Único") }
-    val frequencies = listOf("Pago Único", "Semanal", "Quincenal", "Mensual", "Anual")
+    // --- ESTADOS DE CATEGORÍAS ---
+    var categories by remember { mutableStateOf<List<Categoria>>(emptyList()) }
+    var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
+    var expandedCat by remember { mutableStateOf(false) }
 
-    var isReminderActive by remember { mutableStateOf(false) }
-    var reminderDate by remember { mutableStateOf("") }
-    var reminderTime by remember { mutableStateOf("") }
+    // --- CARGAR CATEGORÍAS SEGÚN EL TIPO ---
+    LaunchedEffect(isExpense) {
+        try {
+            val response = if (isExpense) {
+                RetrofitClient.instance.getCategoriasGastos(userId)
+            } else {
+                RetrofitClient.instance.getCategoriasIngresos(userId)
+            }
+            if (response.isSuccessful) {
+                categories = response.body()?.data ?: emptyList()
+                selectedCategory = categories.firstOrNull() // Selecciona la primera por defecto
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Error cargando categorías", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Colores dinámicos
+    val primaryColor = if (isExpense) SecondaryRed else AccentGreen
 
     Scaffold(
         containerColor = BackgroundSlate,
-        topBar = {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(64.dp).background(primaryColor),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                IconButton(onClick = onNavigateBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) }
-                Text(headerTitle, modifier = Modifier.fillMaxWidth().padding(end = 48.dp), textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
-            }
-        }
+        topBar = { /* ... (Header igual) ... */ }
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
@@ -84,120 +91,87 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 2. ICONO / FOTO (RESTRICTO) ---
-            SectionHeader("ICONO / FOTO", Icons.Default.Image, isLocked = !isPremium)
-            Box(
-                modifier = Modifier.fillMaxWidth().height(100.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
-                    .clickable { if (!isPremium) onNavigateToPremium() },
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
-                    Text("SUBIR IMAGEN PERSONALIZADA", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- 3. MONTO ---
+            // --- 2. MONTO ---
             SectionHeader("MONTO", Icons.Default.AttachMoney)
             OutlinedTextField(
                 value = amount, onValueChange = { amount = it },
-                placeholder = { Text("0.00", fontSize = 32.sp, fontWeight = FontWeight.Black, color = TextMuted) },
+                placeholder = { Text("0.00") },
                 modifier = Modifier.fillMaxWidth(),
-                textStyle = LocalTextStyle.current.copy(fontSize = 32.sp, fontWeight = FontWeight.Black, color = TextDark),
+                singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                shape = RoundedCornerShape(12.dp)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 4. CONCEPTO ---
+            // --- 3. CONCEPTO ---
             SectionHeader("CONCEPTO", Icons.Default.Description)
             OutlinedTextField(
                 value = concept, onValueChange = { concept = it },
-                modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 5. FRECUENCIA (DROPDOWN PREMIUM) ---
-            SectionHeader("FRECUENCIA / PLAZO", Icons.Default.Sync, isLocked = !isPremium)
+            // --- 4. SELECTOR DE CATEGORÍA (NUEVO) ---
+            SectionHeader("CATEGORÍA", Icons.Default.Category)
             ExposedDropdownMenuBox(
-                expanded = expandedFrequency,
-                onExpandedChange = { if (isPremium) expandedFrequency = !expandedFrequency else onNavigateToPremium() }
+                expanded = expandedCat,
+                onExpandedChange = { expandedCat = !expandedCat }
             ) {
                 OutlinedTextField(
-                    value = selectedFrequency, onValueChange = {}, readOnly = true,
+                    value = selectedCategory?.nombre_categoria ?: "Seleccionar...",
+                    onValueChange = {},
+                    readOnly = true,
                     modifier = Modifier.fillMaxWidth().menuAnchor(),
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedFrequency) },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCat) },
+                    shape = RoundedCornerShape(12.dp)
                 )
-                if (isPremium) {
-                    ExposedDropdownMenu(expanded = expandedFrequency, onDismissRequest = { expandedFrequency = false }) {
-                        frequencies.forEach { freq ->
-                            DropdownMenuItem(text = { Text(freq) }, onClick = { selectedFrequency = freq; expandedFrequency = false })
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // --- 6. RECORDATORIO (CARD PREMIUM) ---
-            Card(
-                modifier = Modifier.fillMaxWidth().clickable {
-                    if (!isPremium) onNavigateToPremium() else isReminderActive = !isReminderActive
-                },
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                border = BorderStroke(1.dp, if (isReminderActive) PrimaryBlue else BorderSlate),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(40.dp).background(if (isReminderActive) PrimaryBlue.copy(0.1f) else BackgroundSlate, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.NotificationsNone, null, tint = if (isReminderActive) PrimaryBlue else TextMuted)
-                        }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("ACTIVAR RECORDATORIO", fontWeight = FontWeight.Black, fontSize = 14.sp, color = TextDark)
-                            Text("Recibe una alerta antes del pago", fontSize = 10.sp, color = TextMuted)
-                        }
-                        if (!isPremium) Icon(Icons.Default.Lock, null, tint = SecondaryRed, modifier = Modifier.size(20.dp))
-                    }
-                    if (isReminderActive && isPremium) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            OutlinedTextField(value = reminderDate, onValueChange = { reminderDate = it }, placeholder = { Text("dd/mm/aaaa") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it }, placeholder = { Text("--:--") }, modifier = Modifier.weight(1f))
-                        }
+                ExposedDropdownMenu(expanded = expandedCat, onDismissRequest = { expandedCat = false }) {
+                    categories.forEach { cat ->
+                        DropdownMenuItem(
+                            text = { Text(cat.nombre_categoria) },
+                            onClick = {
+                                selectedCategory = cat
+                                expandedCat = false
+                            }
+                        )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- 7. BOTÓN GUARDAR (AIVEN) ---
+            // --- 5. BOTÓN GUARDAR ---
             Button(
                 onClick = {
-                    if (amount.isNotBlank() && concept.isNotBlank()) {
+                    if (amount.isNotBlank() && concept.isNotBlank() && selectedCategory != null) {
                         scope.launch {
                             isLoading = true
                             try {
-                                val response = RetrofitClient.instance.addTransaction(
-                                    TransactionRequest(userId, concept, "General", amount.toDoubleOrNull() ?: 0.0, if (isExpense) "GASTO" else "INGRESO", date)
-                                )
+                                val monto = amount.toDoubleOrNull() ?: 0.0
+                                val response = if (isExpense) {
+                                    RetrofitClient.instance.addGasto(
+                                        GastoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, "ÚNICO", monto)
+                                    )
+                                } else {
+                                    RetrofitClient.instance.addIngreso(
+                                        IngresoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, monto, 1)
+                                    )
+                                }
+
                                 if (response.isSuccessful) {
-                                    Toast.makeText(context, "¡Guardado en Aiven!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "¡Guardado con éxito!", Toast.LENGTH_SHORT).show()
                                     onNavigateBack()
                                 }
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                             } finally { isLoading = false }
                         }
+                    } else {
+                        Toast.makeText(context, "Faltan datos o categoría", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -205,21 +179,9 @@ fun AddExpenseScreen(
                 shape = RoundedCornerShape(12.dp),
                 enabled = !isLoading
             ) {
-                if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                else Text("GUARDAR TRANSACCIÓN", fontWeight = FontWeight.Black)
+                if (isLoading) CircularProgressIndicator(color = Color.White)
+                else Text("GUARDAR")
             }
         }
-    }
-}
-
-@Composable
-fun SectionHeader(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, isLocked: Boolean = false) {
-    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, null, tint = TextMuted, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(title, color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
-        if (isLocked) Icon(Icons.Default.Lock, null, tint = SecondaryRed, modifier = Modifier.size(14.dp))
     }
 }
