@@ -25,20 +25,36 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.freeze_xpends.network.RetrofitClient
+import com.example.freeze_xpends.network.PresupuestoGlobalRequest
+import com.example.freeze_xpends.network.LimiteCategoriaRequest
 import com.example.freeze_xpends.theme.*
+import kotlinx.coroutines.launch
+
+// Modificamos la clase para que sepa qué ID de categoría tiene
+data class BudgetCategoryData(
+    val id: Int,
+    val title: String,
+    val spent: Float,
+    val limit: Float,
+    val color: Color,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector
+)
 
 @Composable
-fun BudgetScreen(onNavigateBack: () -> Unit) {
-    // --- ESTADO GLOBAL (Simulación de datos) ---
-    val budgetData = remember {
-        mutableStateListOf(
-            BudgetCategoryData("Vivienda", 7000f, 10000f, SecondaryRed, Icons.Default.Home),
-            BudgetCategoryData("Servicios", 900f, 1500f, Color(0xFF4A4453), Icons.Default.Settings),
-            BudgetCategoryData("Alimentación", 2000f, 5000f, Color(0xFF90A4AE), Icons.Default.Restaurant)
-        )
-    }
-    var mainBudgetLimit by remember { mutableStateOf(16500f) }
-    var spentMain by remember { mutableStateOf(9900f) }
+fun BudgetScreen(
+    userId: Int, // <-- Requisito para cargar datos de Aiven
+    onNavigateBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(true) }
+    var refreshKey by remember { mutableStateOf(0) } // Para recargar al guardar
+
+    // --- ESTADO GLOBAL REAL ---
+    val budgetData = remember { mutableStateListOf<BudgetCategoryData>() }
+    var mainBudgetLimit by remember { mutableStateOf(0f) }
+    var spentMain by remember { mutableStateOf(0f) }
 
     // --- ESTADOS DE NAVEGACIÓN Y DIÁLOGOS ---
     var showReport by remember { mutableStateOf(false) }
@@ -47,51 +63,123 @@ fun BudgetScreen(onNavigateBack: () -> Unit) {
     var editingCategoryIndex by remember { mutableStateOf(-1) }
     var budgetAmountInput by remember { mutableStateOf("") }
 
-    // --- CONTROL DE VISTAS ---
-    if (showReport) {
-        ReportContent(onClose = { showReport = false })
-    } else {
-        BudgetMainContent(
-            onNavigateBack = onNavigateBack,
-            onGenerateReport = { showReport = true },
-            spentMain = spentMain,
-            mainBudgetLimit = mainBudgetLimit,
-            budgetData = budgetData,
-            onEditMainBudget = {
-                budgetAmountInput = mainBudgetLimit.toInt().toString()
-                showEditMainDialog = true
-            },
-            onEditCategoryBudget = { index ->
-                editingCategoryIndex = index
-                budgetAmountInput = budgetData[index].limit.toInt().toString()
-                showEditCategoryDialog = true
+    // Paleta de colores e iconos para las categorías dinámicas
+    val catColors = listOf(SecondaryRed, Color(0xFF4A4453), Color(0xFF90A4AE), AccentGreen, Color(0xFFF59E0B))
+    val catIcons = listOf(Icons.Default.Home, Icons.Default.Settings, Icons.Default.Restaurant, Icons.Default.DirectionsCar, Icons.Default.Favorite)
+
+    // --- CARGAR DATOS DE AIVEN ---
+    LaunchedEffect(refreshKey) {
+        isLoading = true
+        try {
+            // 1. Obtener Presupuesto Global
+            val resPresupuesto = RetrofitClient.instance.getPresupuestoGlobal(userId)
+            if (resPresupuesto.isSuccessful) {
+                mainBudgetLimit = resPresupuesto.body()?.presupuesto_global?.toFloat() ?: 0f
             }
-        )
+
+            // 2. Obtener Gastos Reales
+            val resGastos = RetrofitClient.instance.getGastos(userId)
+            val listaGastos = resGastos.body()?.data ?: emptyList()
+            spentMain = listaGastos.sumOf { it.monto_gasto }.toFloat()
+
+            // 3. Obtener Categorías y sus límites
+            val resCategorias = RetrofitClient.instance.getCategoriasGastos(userId)
+            val listaCategorias = resCategorias.body()?.data ?: emptyList()
+
+            // 4. Mapear y juntar todo
+            val tempBudgetData = listaCategorias.mapIndexed { index, cat ->
+                val spentInCat = listaGastos.filter { it.categoria_id == cat.categoria_id }.sumOf { it.monto_gasto }.toFloat()
+                val limitInCat = cat.limite_presupuesto?.toFloat() ?: 0f
+                BudgetCategoryData(
+                    id = cat.categoria_id,
+                    title = cat.nombre_categoria,
+                    spent = spentInCat,
+                    limit = limitInCat,
+                    color = catColors[index % catColors.size],
+                    icon = catIcons[index % catIcons.size]
+                )
+            }
+            budgetData.clear()
+            budgetData.addAll(tempBudgetData)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Error cargando presupuestos", Toast.LENGTH_SHORT).show()
+        } finally {
+            isLoading = false
+        }
     }
 
-    // --- DIÁLOGO DE EDICIÓN LÍMITE GLOBAL ---
+    if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = PrimaryBlue)
+        }
+    } else {
+        // --- CONTROL DE VISTAS ---
+        if (showReport) {
+            ReportContent(onClose = { showReport = false })
+        } else {
+            BudgetMainContent(
+                onNavigateBack = onNavigateBack,
+                onGenerateReport = { showReport = true },
+                spentMain = spentMain,
+                mainBudgetLimit = mainBudgetLimit,
+                budgetData = budgetData,
+                onEditMainBudget = {
+                    budgetAmountInput = mainBudgetLimit.toInt().toString()
+                    showEditMainDialog = true
+                },
+                onEditCategoryBudget = { index ->
+                    editingCategoryIndex = index
+                    budgetAmountInput = budgetData[index].limit.toInt().toString()
+                    showEditCategoryDialog = true
+                }
+            )
+        }
+    }
+
+    // --- DIÁLOGO DE EDICIÓN LÍMITE GLOBAL (CONECTADO A AIVEN) ---
     if (showEditMainDialog) {
         BudgetEditDialog(
             title = "LIMITE DE GASTO GLOBAL",
             initialValue = budgetAmountInput,
             onClose = { showEditMainDialog = false },
             onConfirm = { newValue ->
-                val newLimit = newValue.toFloatOrNull() ?: mainBudgetLimit
-                mainBudgetLimit = newLimit
+                val newLimit = newValue.toDoubleOrNull() ?: mainBudgetLimit.toDouble()
+                scope.launch {
+                    try {
+                        val response = RetrofitClient.instance.updatePresupuestoGlobal(userId, PresupuestoGlobalRequest(newLimit))
+                        if (response.isSuccessful) {
+                            Toast.makeText(context, "Presupuesto global actualizado", Toast.LENGTH_SHORT).show()
+                            refreshKey++ // Recargar datos
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 showEditMainDialog = false
             }
         )
     }
 
-    // --- DIÁLOGO DE EDICIÓN LÍMITE CATEGORÍA ---
+    // --- DIÁLOGO DE EDICIÓN LÍMITE CATEGORÍA (CONECTADO A AIVEN) ---
     if (showEditCategoryDialog && editingCategoryIndex != -1) {
         BudgetEditDialog(
             title = "LIMITE: ${budgetData[editingCategoryIndex].title.uppercase()}",
             initialValue = budgetAmountInput,
             onClose = { showEditCategoryDialog = false },
             onConfirm = { newValue ->
-                val newLimit = newValue.toFloatOrNull() ?: budgetData[editingCategoryIndex].limit
-                budgetData[editingCategoryIndex] = budgetData[editingCategoryIndex].copy(limit = newLimit)
+                val newLimit = newValue.toDoubleOrNull() ?: budgetData[editingCategoryIndex].limit.toDouble()
+                val catId = budgetData[editingCategoryIndex].id
+                scope.launch {
+                    try {
+                        val response = RetrofitClient.instance.updateLimiteCategoria(catId, LimiteCategoriaRequest(newLimit))
+                        if (response.isSuccessful) {
+                            Toast.makeText(context, "Límite de categoría actualizado", Toast.LENGTH_SHORT).show()
+                            refreshKey++ // Recargar datos
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show()
+                    }
+                }
                 showEditCategoryDialog = false
             }
         )
@@ -124,7 +212,7 @@ fun BudgetMainContent(
             IconButton(onClick = onNavigateBack) {
                 Icon(Icons.Default.ArrowBack, "Volver", tint = Color.White)
             }
-            Text("PRESUPUESTOS", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
+            Text("PRESUPUESTOS", modifier = Modifier.fillMaxWidth().padding(end = 48.dp), textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
         }
 
         Column(
@@ -143,13 +231,13 @@ fun BudgetMainContent(
                 ) {
                     Text("TOTAL PRESUPUESTADO", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("$${"%.0f".format(mainBudgetLimit)}", fontSize = 40.sp, fontWeight = FontWeight.Black, color = TextDark)
+                    Text("$${"%,.0f".format(mainBudgetLimit)}", fontSize = 40.sp, fontWeight = FontWeight.Black, color = TextDark)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Gastado: ", fontSize = 14.sp, color = TextMuted)
-                        Text("$${"%.0f".format(spentMain)}", fontSize = 14.sp, color = SecondaryRed, fontWeight = FontWeight.Bold)
-                        Text(" / $${"%.0f".format(mainBudgetLimit)}", fontSize = 14.sp, color = TextDark, fontWeight = FontWeight.Bold)
+                        Text("$${"%,.0f".format(spentMain)}", fontSize = 14.sp, color = SecondaryRed, fontWeight = FontWeight.Bold)
+                        Text(" / $${"%,.0f".format(mainBudgetLimit)}", fontSize = 14.sp, color = TextDark, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             Icons.Outlined.Edit,
@@ -162,7 +250,7 @@ fun BudgetMainContent(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     LinearProgressIndicator(
-                        progress = progressMain,
+                        progress = progressMain.coerceIn(0f, 1f),
                         modifier = Modifier.fillMaxWidth().height(16.dp).clip(CircleShape),
                         color = SecondaryRed,
                         trackColor = BorderSlate.copy(0.5f)
@@ -246,8 +334,6 @@ fun ReportContent(onClose: () -> Unit) {
     var selectedPeriod by remember { mutableStateOf("Mensual") }
     val periods = listOf("Semanal", "Quincenal", "Mensual", "Bimestral", "Trimestral", "Semestral", "Anual")
 
-    // --- LÓGICA DE MULTIPLICADOR SEGÚN EL PLAZO ---
-    // Asumimos que los datos base son MENSUALES
     val multiplier = when (selectedPeriod) {
         "Semanal" -> 0.25f
         "Quincenal" -> 0.5f
@@ -259,21 +345,13 @@ fun ReportContent(onClose: () -> Unit) {
         else -> 1f
     }
 
-    // Datos base (Mensuales)
-    val baseVivienda = 7000f
-    val baseServicios = 900f
-    val baseEntretenimiento = 250f
-    val baseSalud = 600f
-
-    // Datos Calculados en tiempo real
-    val valVivienda = baseVivienda * multiplier
-    val valServicios = baseServicios * multiplier
-    val valEntretenimiento = baseEntretenimiento * multiplier
-    val valSalud = baseSalud * multiplier
+    val valVivienda = 7000f * multiplier
+    val valServicios = 900f * multiplier
+    val valEntretenimiento = 250f * multiplier
+    val valSalud = 600f * multiplier
 
     val totalAmount = valVivienda + valServicios + valEntretenimiento + valSalud
 
-    // Cálculo de Porcentajes (0.0 a 1.0)
     val pctVivienda = if (totalAmount > 0) valVivienda / totalAmount else 0f
     val pctServicios = if (totalAmount > 0) valServicios / totalAmount else 0f
     val pctEntretenimiento = if (totalAmount > 0) valEntretenimiento / totalAmount else 0f
@@ -282,33 +360,27 @@ fun ReportContent(onClose: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize().background(BackgroundSlate)
     ) {
-        // HEADER AZUL
         Box(
             modifier = Modifier.fillMaxWidth().height(64.dp).background(PrimaryBlue),
             contentAlignment = Alignment.CenterStart
         ) {
             IconButton(onClick = onClose) { Icon(Icons.Default.ArrowBack, "Volver", tint = Color.White) }
-            Text("REPORTE AUTOMÁTICO", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
+            Text("REPORTE AUTOMÁTICO", modifier = Modifier.fillMaxWidth().padding(end = 48.dp), textAlign = TextAlign.Center, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 1.sp)
         }
 
         Column(
             modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)
         ) {
-            // TÍTULO DEL REPORTE
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.PieChartOutline, null, tint = PrimaryBlue, modifier = Modifier.size(28.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Reporte de Gastos", fontSize = 22.sp, fontWeight = FontWeight.Black, color = TextDark)
                 }
-                IconButton(onClick = onClose, modifier = Modifier.size(32.dp).background(Color.White, CircleShape)) {
-                    Icon(Icons.Default.Close, null, tint = TextDark, modifier = Modifier.size(16.dp))
-                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // TABS (Detalle / Gráfica Global)
             Row(modifier = Modifier.fillMaxWidth().height(48.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp)).padding(4.dp)) {
                 Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp)).background(if (isDetailTab) BackgroundSlate else Color.Transparent).clickable { isDetailTab = true }, contentAlignment = Alignment.Center) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -328,10 +400,8 @@ fun ReportContent(onClose: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // CONTENEDOR BLANCO PRINCIPAL
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, BorderSlate)) {
                 Column(modifier = Modifier.padding(24.dp)) {
-                    // DROPDOWN PLAZO
                     Text("PLAZO DEL REPORTE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted, letterSpacing = 1.sp)
                     ExposedDropdownMenuBox(expanded = expandedPeriod, onExpandedChange = { expandedPeriod = !expandedPeriod }) {
                         OutlinedTextField(
@@ -351,21 +421,17 @@ fun ReportContent(onClose: () -> Unit) {
                     Spacer(modifier = Modifier.height(24.dp))
 
                     if (isDetailTab) {
-                        // VISTA DETALLE DINÁMICA
-                        ReportDetailCard(color = SecondaryRed, title = "VIVIENDA", total = "$${"%.0f".format(valVivienda)}", items = listOf("Renta" to "$${"%.0f".format(valVivienda)}"))
+                        ReportDetailCard(color = SecondaryRed, title = "VIVIENDA", total = "$${"%,.0f".format(valVivienda)}", items = listOf("Renta" to "$${"%,.0f".format(valVivienda)}"))
                         Spacer(modifier = Modifier.height(12.dp))
-                        // Servicios divididos proporcionalmente
-                        ReportDetailCard(color = Color(0xFF4A4453), title = "SERVICIOS", total = "$${"%.0f".format(valServicios)}", items = listOf("Internet" to "$${"%.0f".format(500 * multiplier)}", "Gas" to "$${"%.0f".format(400 * multiplier)}"))
+                        ReportDetailCard(color = Color(0xFF4A4453), title = "SERVICIOS", total = "$${"%,.0f".format(valServicios)}", items = listOf("Internet" to "$${"%,.0f".format(500 * multiplier)}", "Gas" to "$${"%,.0f".format(400 * multiplier)}"))
                         Spacer(modifier = Modifier.height(12.dp))
-                        ReportDetailCard(color = AccentGreen, title = "ENTRETENIMIENTO", total = "$${"%.0f".format(valEntretenimiento)}", items = listOf("Spotify" to "$${"%.0f".format(valEntretenimiento)}"))
+                        ReportDetailCard(color = AccentGreen, title = "ENTRETENIMIENTO", total = "$${"%,.0f".format(valEntretenimiento)}", items = listOf("Spotify" to "$${"%,.0f".format(valEntretenimiento)}"))
                         Spacer(modifier = Modifier.height(12.dp))
-                        ReportDetailCard(color = Color(0xFFF59E0B), title = "SALUD", total = "$${"%.0f".format(valSalud)}", items = listOf("Gimnasio" to "$${"%.0f".format(valSalud)}"))
+                        ReportDetailCard(color = Color(0xFFF59E0B), title = "SALUD", total = "$${"%,.0f".format(valSalud)}", items = listOf("Gimnasio" to "$${"%,.0f".format(valSalud)}"))
                     } else {
-                        // VISTA GRÁFICA DINÁMICA
                         Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                             Canvas(modifier = Modifier.size(160.dp)) {
-                                // Dibujamos los arcos basados en los 360 grados del círculo
-                                var startAngle = 270f // Empezar arriba
+                                var startAngle = 270f
                                 val strokeWidth = 40.dp.toPx()
 
                                 val sweepVivienda = pctVivienda * 360f
@@ -385,44 +451,25 @@ fun ReportContent(onClose: () -> Unit) {
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("TOTAL", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = TextMuted)
-                                Text("$${"%.0f".format(totalAmount)}", fontSize = 20.sp, fontWeight = FontWeight.Black, color = TextDark)
+                                Text("$${"%,.0f".format(totalAmount)}", fontSize = 20.sp, fontWeight = FontWeight.Black, color = TextDark)
                             }
                         }
 
                         Spacer(modifier = Modifier.height(32.dp))
 
-                        // LEYENDA DINÁMICA
-                        GraphLegendItem(color = SecondaryRed, title = "VIVIENDA", percentage = "(${"%.1f".format(pctVivienda * 100)}%)", amount = "$${"%.0f".format(valVivienda)}")
+                        GraphLegendItem(color = SecondaryRed, title = "VIVIENDA", percentage = "(${"%.1f".format(pctVivienda * 100)}%)", amount = "$${"%,.0f".format(valVivienda)}")
                         Spacer(modifier = Modifier.height(16.dp))
-                        GraphLegendItem(color = Color(0xFF4A4453), title = "SERVICIOS", percentage = "(${"%.1f".format(pctServicios * 100)}%)", amount = "$${"%.0f".format(valServicios)}")
+                        GraphLegendItem(color = Color(0xFF4A4453), title = "SERVICIOS", percentage = "(${"%.1f".format(pctServicios * 100)}%)", amount = "$${"%,.0f".format(valServicios)}")
                         Spacer(modifier = Modifier.height(16.dp))
-                        GraphLegendItem(color = AccentGreen, title = "ENTRETENIMIENTO", percentage = "(${"%.1f".format(pctEntretenimiento * 100)}%)", amount = "$${"%.0f".format(valEntretenimiento)}")
+                        GraphLegendItem(color = AccentGreen, title = "ENTRETENIMIENTO", percentage = "(${"%.1f".format(pctEntretenimiento * 100)}%)", amount = "$${"%,.0f".format(valEntretenimiento)}")
                         Spacer(modifier = Modifier.height(16.dp))
-                        GraphLegendItem(color = Color(0xFFF59E0B), title = "SALUD", percentage = "(${"%.1f".format(pctSalud * 100)}%)", amount = "$${"%.0f".format(valSalud)}")
+                        GraphLegendItem(color = Color(0xFFF59E0B), title = "SALUD", percentage = "(${"%.1f".format(pctSalud * 100)}%)", amount = "$${"%,.0f".format(valSalud)}")
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Button(
-                onClick = { /* Descargar */ },
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Icon(Icons.Default.Download, null, tint = Color.White)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Descargar PDF", fontWeight = FontWeight.Black, fontSize = 16.sp)
-            }
-
-            Spacer(modifier = Modifier.height(40.dp))
-        }
-    }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // BOTÓN DESCARGAR REPORTE (FUNCIONAL NATIVO)
             Button(
                 onClick = {
                     Toast.makeText(context, "Generando PDF...", Toast.LENGTH_SHORT).show()
@@ -442,18 +489,12 @@ fun ReportContent(onClose: () -> Unit) {
 
             Spacer(modifier = Modifier.height(40.dp))
         }
+    }
+}
 
 // ============================================================================
-// COMPONENTES AUXILIARES Y DATA CLASSES
+// COMPONENTES AUXILIARES
 // ============================================================================
-
-data class BudgetCategoryData(
-    val title: String,
-    val spent: Float,
-    val limit: Float,
-    val color: Color,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -526,16 +567,16 @@ fun BudgetCategoryCard(category: BudgetCategoryData, onEditClick: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(category.title, fontSize = 16.sp, fontWeight = FontWeight.Black, color = TextDark)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("$${"%.0f".format(category.spent)}", fontSize = 12.sp, color = SecondaryRed, fontWeight = FontWeight.Bold)
-                    Text(" / $${"%.0f".format(category.limit)}", fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Bold)
+                    Text("$${"%,.0f".format(category.spent)}", fontSize = 12.sp, color = SecondaryRed, fontWeight = FontWeight.Bold)
+                    Text(" / $${"%,.0f".format(category.limit)}", fontSize = 12.sp, color = TextDark, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(Icons.Outlined.Edit, null, tint = TextMuted, modifier = Modifier.size(16.dp).clickable { onEditClick() })
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
             LinearProgressIndicator(
-                progress = progress,
-                modifier = Modifier.fillMaxWidth(0.7f).height(8.dp).clip(CircleShape),
+                progress = progress.coerceIn(0f, 1f),
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
                 color = category.color,
                 trackColor = BorderSlate
             )

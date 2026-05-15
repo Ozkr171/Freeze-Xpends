@@ -129,8 +129,22 @@ fun AppNavigation(
             )
         }
 
-        composable("calendar") { CalendarScreen(onNavigateBack = { navController.popBackStack() }) }
-        composable("budget") { BudgetScreen(onNavigateBack = { navController.popBackStack() }) }
+        composable(route = "calendar") {
+            CalendarScreen(
+                userId = userViewModel.userId.value,
+                isPremium = isPremium,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigate = { route -> navController.navigate(route) }
+            )
+        }
+
+        // En tu MainActivity.kt, cámbialo a:
+        composable(route = "budget") {
+            BudgetScreen(
+                userId = userViewModel.userId.value,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
         composable("support") { SupportScreen(onNavigateBack = { navController.popBackStack() }) }
 
         composable("premium") {

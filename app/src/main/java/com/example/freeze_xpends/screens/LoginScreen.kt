@@ -48,7 +48,7 @@ fun LoginScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundSlate)
+                .background(BackgroundSlate)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -94,27 +94,21 @@ fun LoginScreen(
 
                             if (response.isSuccessful) {
                                 val body = response.body()
-                                if (body?.data != null) {
-                                    val userData = body.data
-
-                                    // 1. Guardamos en SharedPreferences usando la función correcta
+                                if (body?.user_id != null) {
                                     sessionManager.saveSession(
-                                        userId = userData.user_id,
-                                        nombre = userData.nombre ?: "Usuario",
+                                        userId = body.user_id,
+                                        nombre = body.nombre ?: "Usuario",
                                         email = email,
-                                        isPremium = userData.premium == 1
+                                        isPremium = body.premium == 1
                                     )
-
-                                    // 2. Guardamos en el ViewModel
                                     userViewModel.setUserData(
-                                        id = userData.user_id,
-                                        name = userData.nombre ?: "Usuario",
+                                        id = body.user_id,
+                                        name = body.nombre ?: "Usuario",
                                         email = email,
-                                        isPremium = userData.premium == 1
+                                        isPremium = body.premium == 1
                                     )
-
-                                    Toast.makeText(context, "¡Bienvenido, ${userData.nombre}!", Toast.LENGTH_SHORT).show()
-                                    onNavigate("home") // AQUÍ CORREGIMOS LA NAVEGACIÓN
+                                    Toast.makeText(context, "¡Bienvenido, ${body.nombre}!", Toast.LENGTH_SHORT).show()
+                                    onNavigate("home")
                                 } else {
                                     Toast.makeText(context, "Error leyendo los datos", Toast.LENGTH_SHORT).show()
                                 }

@@ -46,9 +46,15 @@ fun HomeScreen(
     onNavigate: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(false) }
     var transactionTypeExpense by remember { mutableStateOf(false) }
+
+    // NUEVO: Estado para saber qué transacción estamos editando
+    var selectedTransaccion by remember { mutableStateOf<TransaccionItem?>(null) }
+
+    // NUEVO: Clave para forzar la recarga de datos al guardar/borrar
+    var refreshKey by remember { mutableStateOf(0) }
 
     // --- ESTADOS PARA LOS DATOS REALES ---
     var transacciones by remember { mutableStateOf<List<TransaccionItem>>(emptyList()) }
@@ -57,22 +63,18 @@ fun HomeScreen(
     var balanceTotal by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // Formateador de dinero (ej. $1,000.00)
     val moneyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
 
-    // --- CARGAR DATOS DESDE AIVEN ---
-    LaunchedEffect(Unit) {
+    // --- CARGAR DATOS DESDE AIVEN (Escucha el refreshKey) ---
+    LaunchedEffect(refreshKey) {
         isLoading = true
         try {
-            // 1. Traer Gastos
             val responseGastos = RetrofitClient.instance.getGastos(userId)
             val listaGastos = responseGastos.body()?.data ?: emptyList()
 
-            // 2. Traer Ingresos
             val responseIngresos = RetrofitClient.instance.getIngresos(userId)
             val listaIngresos = responseIngresos.body()?.data ?: emptyList()
 
-            // 3. Hacer los cálculos
             val sumaGastos = listaGastos.sumOf { it.monto_gasto }
             val sumaIngresos = listaIngresos.sumOf { it.monto }
 
@@ -80,11 +82,10 @@ fun HomeScreen(
             totalIngresos = sumaIngresos
             balanceTotal = sumaIngresos - sumaGastos
 
-            // 4. Transformar y juntar las listas para pintarlas
             val itemsGastos = listaGastos.map {
                 TransaccionItem(
                     id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
-                    categoria = "Gasto", // Fase 2: Conectar nombre de categoría real
+                    categoria = "Gasto", // Idealmente aquí debería venir el JOIN en el backend
                     monto = it.monto_gasto, fecha = it.fecha_gasto.substringBefore("T"),
                     frecuencia = it.plazo ?: "ÚNICO", status = "PAGADO"
                 )
@@ -98,7 +99,6 @@ fun HomeScreen(
                 )
             }
 
-            // Unimos todo y lo ordenamos por fecha (del más nuevo al más viejo)
             transacciones = (itemsGastos + itemsIngresos).sortedByDescending { it.fecha }
 
         } catch (e: Exception) {
@@ -123,12 +123,8 @@ fun HomeScreen(
         containerColor = BackgroundSlate
     ) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // --- 1. HEADER AZUL DINÁMICO ---
             item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                        .background(PrimaryBlue).padding(24.dp)
-                ) {
+                Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp)).background(PrimaryBlue).padding(24.dp)) {
                     if (!isPremium) {
                         Surface(color = SecondaryRed, shape = RoundedCornerShape(bottomStart = 8.dp), modifier = Modifier.align(Alignment.TopEnd).offset(x = 24.dp, y = (-24).dp)) {
                             Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -164,7 +160,6 @@ fun HomeScreen(
                 }
             }
 
-            // --- 2. ANUNCIO (Solo si no es Premium) ---
             if (!isPremium) {
                 item {
                     Column(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -182,14 +177,12 @@ fun HomeScreen(
                 }
             }
 
-            // --- 3. TÍTULO TRANSACCIONES ---
             item {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Transacciones", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextDark)
                 }
             }
 
-            // --- 4. LISTA DE MOVIMIENTOS ---
             if (isLoading) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -216,8 +209,12 @@ fun HomeScreen(
 
                     TransactionCard(
                         title = t.titulo, category = t.categoria, freq = t.frecuencia, amount = moneyText,
-                        date = t.fecha, status = t.status, icon = iconImage, iconColor = iconColor,
-                        onEditClick = { transactionTypeExpense = t.isGasto; showBottomSheet = true }
+                        date = t.fecha, icon = iconImage, iconColor = iconColor,
+                        onEditClick = {
+                            selectedTransaccion = t
+                            transactionTypeExpense = t.isGasto
+                            showBottomSheet = true
+                        }
                     )
                 }
             }
@@ -225,10 +222,25 @@ fun HomeScreen(
         }
     }
 
-    // Modal (Se queda igual por ahora)
+    // Modal para editar la transacción conectada
     if (showBottomSheet) {
         ModalBottomSheet(onDismissRequest = { showBottomSheet = false }, sheetState = sheetState, containerColor = Color.White) {
-            EditTransactionContent(isPremium, transactionTypeExpense, onClose = { scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false } }, onNavigateToPremium = { showBottomSheet = false; onNavigate("premium") }, onSaveClick = {}, onDeleteClick = {})
+            EditTransactionContent(
+                isPremium = isPremium,
+                isExpense = transactionTypeExpense,
+                transaccion = selectedTransaccion, // <-- Pasamos la data de la card seleccionada
+                userId = userId,
+                onClose = { scope.launch { sheetState.hide() }.invokeOnCompletion { showBottomSheet = false } },
+                onNavigateToPremium = { showBottomSheet = false; onNavigate("premium") },
+                onSaveSuccess = {
+                    showBottomSheet = false
+                    refreshKey++ // <-- Fuerza a recargar los datos
+                },
+                onDeleteSuccess = {
+                    showBottomSheet = false
+                    refreshKey++ // <-- Fuerza a recargar los datos
+                }
+            )
         }
     }
 }
@@ -245,32 +257,34 @@ fun SummaryCard(label: String, amount: String, icon: androidx.compose.ui.graphic
 }
 
 @Composable
-fun TransactionCard(title: String, category: String, freq: String, amount: String, date: String, status: String, icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color, onEditClick: () -> Unit) {
+fun TransactionCard(title: String, category: String, freq: String, amount: String, date: String, icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color, onEditClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(2.dp),
         shape = RoundedCornerShape(16.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(48.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
-                    Icon(icon, null, tint = iconColor)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(color = BackgroundSlate, shape = RoundedCornerShape(4.dp)) {
-                            Text(category, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 10.sp, color = TextMuted)
-                        }
-                        Text(" $freq", fontSize = 10.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(modifier = Modifier.size(48.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = iconColor)
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = BackgroundSlate, shape = RoundedCornerShape(4.dp)) {
+                        Text(category, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), fontSize = 10.sp, color = TextMuted)
                     }
+                    Text(" $freq", fontSize = 10.sp, color = AccentGreen, fontWeight = FontWeight.Bold)
                 }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(amount, fontWeight = FontWeight.Black, fontSize = 16.sp, color = if (amount.startsWith("+")) AccentGreen else TextDark)
-                    Text(date, fontSize = 10.sp, color = TextMuted)
-                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(amount, fontWeight = FontWeight.Black, fontSize = 16.sp, color = if (amount.startsWith("+")) AccentGreen else TextDark)
+                Text(date, fontSize = 10.sp, color = TextMuted)
+            }
+            // NUEVO: Ícono de lápiz de edición
+            IconButton(onClick = onEditClick, modifier = Modifier.size(32.dp).padding(start = 8.dp)) {
+                Icon(Icons.Outlined.Edit, null, tint = TextMuted, modifier = Modifier.size(18.dp))
             }
         }
     }
