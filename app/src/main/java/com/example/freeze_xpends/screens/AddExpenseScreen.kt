@@ -10,7 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable // <-- FIX: Import necesario para guardar estado
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +28,7 @@ import com.example.freeze_xpends.network.Categoria
 import com.example.freeze_xpends.theme.*
 import com.example.freeze_xpends.viewmodels.UserViewModel
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,7 +43,6 @@ fun AddExpenseScreen(
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
 
-    // --- FIX UX: Usamos rememberSaveable para que no se borren los datos al ir a Premium ---
     var isExpense by rememberSaveable { mutableStateOf(true) }
     val primaryColor = if (isExpense) SecondaryRed else AccentGreen
     val headerTitle = if (isExpense) "NUEVO GASTO" else "NUEVO INGRESO"
@@ -57,12 +57,10 @@ fun AddExpenseScreen(
         )
     }
 
-    // --- ESTADOS DE CATEGORÍAS (Usan remember normal porque son listas/objetos) ---
     var categories by remember { mutableStateOf<List<Categoria>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
     var expandedCat by remember { mutableStateOf(false) }
 
-    // --- ESTADOS PREMIUM ---
     var expandedFrequency by remember { mutableStateOf(false) }
     var selectedFrequency by rememberSaveable { mutableStateOf("Pago Único") }
     val frequencies = listOf("Pago Único", "Semanal", "Quincenal", "Mensual", "Anual")
@@ -71,7 +69,18 @@ fun AddExpenseScreen(
     var reminderDate by rememberSaveable { mutableStateOf("") }
     var reminderTime by rememberSaveable { mutableStateOf("") }
 
-    // --- CARGAR CATEGORÍAS SEGÚN EL TIPO ---
+    // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
     LaunchedEffect(isExpense) {
         try {
             val response = if (isExpense) {
@@ -104,7 +113,6 @@ fun AddExpenseScreen(
             modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // --- 1. SELECTOR GASTO/INGRESO ---
             Row(modifier = Modifier.fillMaxWidth().height(56.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp)).padding(4.dp)) {
                 Box(modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp)).background(if (isExpense) SecondaryRed else Color.Transparent).clickable { isExpense = true }, contentAlignment = Alignment.Center) {
                     Text("Gasto", color = if (isExpense) Color.White else TextMuted, fontWeight = FontWeight.Bold)
@@ -116,7 +124,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 2. ICONO / FOTO (RESTRICTO) ---
             SectionHeader("ICONO / FOTO", Icons.Default.Image, isLocked = !isPremium)
             Box(
                 modifier = Modifier.fillMaxWidth().height(100.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
@@ -131,7 +138,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 3. MONTO ---
             SectionHeader("MONTO", Icons.Default.AttachMoney)
             OutlinedTextField(
                 value = amount, onValueChange = { amount = it },
@@ -146,7 +152,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 4. CONCEPTO ---
             SectionHeader("CONCEPTO", Icons.Default.Description)
             OutlinedTextField(
                 value = concept, onValueChange = { concept = it },
@@ -158,7 +163,28 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 4.5 SELECTOR DE CATEGORÍA ---
+            // --- SECCIÓN FECHA DINÁMICA CON DATAPICKER ---
+            SectionHeader("FECHA DE INICIO", Icons.Default.DateRange)
+            Box(modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() }) {
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = {},
+                    readOnly = true, // Bloquea escritura manual
+                    enabled = false, // Lo hace solo clickeable desde la Box
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = { Icon(Icons.Default.DateRange, null, tint = primaryColor) },
+                    textStyle = LocalTextStyle.current.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = TextDark,
+                        disabledBorderColor = BorderSlate,
+                        disabledTrailingIconColor = primaryColor
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             SectionHeader("CATEGORÍA", Icons.Default.Category)
             ExposedDropdownMenuBox(
                 expanded = expandedCat,
@@ -188,7 +214,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 5. FRECUENCIA (DROPDOWN PREMIUM) ---
             SectionHeader("FRECUENCIA / PLAZO", Icons.Default.Sync, isLocked = !isPremium)
             ExposedDropdownMenuBox(
                 expanded = expandedFrequency,
@@ -212,7 +237,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 6. RECORDATORIO (CARD PREMIUM) ---
             Card(
                 modifier = Modifier.fillMaxWidth().clickable {
                     if (!isPremium) onNavigateToPremium() else isReminderActive = !isReminderActive
@@ -245,7 +269,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- 7. BOTÓN GUARDAR (AIVEN REAL) ---
             Button(
                 onClick = {
                     if (amount.isNotBlank() && concept.isNotBlank() && selectedCategory != null) {
@@ -254,39 +277,34 @@ fun AddExpenseScreen(
                             try {
                                 val montoDouble = amount.toDoubleOrNull() ?: 0.0
 
+                                val isUnico = selectedFrequency == "Pago Único"
+                                val plazoEnviar = if (isUnico) "ÚNICO" else selectedFrequency
+                                val estatusInicial = if (isUnico) 1 else 0
+
                                 val response = if (isExpense) {
                                     RetrofitClient.instance.addGasto(
                                         GastoRequest(
-                                            user_id = userId,
-                                            categoria_id = selectedCategory!!.categoria_id,
-                                            fecha_gasto = date,
-                                            nombre_gasto = concept,
-                                            descripcion = null,
-                                            plazo = if (selectedFrequency == "Pago Único") null else selectedFrequency,
-                                            monto_gasto = montoDouble,
-                                            imagen_uri = null
+                                            user_id = userId, categoria_id = selectedCategory!!.categoria_id,
+                                            fecha_gasto = date, nombre_gasto = concept, descripcion = null,
+                                            plazo = plazoEnviar, monto_gasto = montoDouble, imagen_uri = null
                                         )
                                     )
                                 } else {
                                     RetrofitClient.instance.addIngreso(
                                         IngresoRequest(
-                                            user_id = userId,
-                                            categoria_id = selectedCategory!!.categoria_id,
-                                            fecha_ingreso = date,
-                                            nombre_ingreso = concept,
-                                            descripcion = null,
-                                            monto = montoDouble,
-                                            recibido = 1,
-                                            imagen_uri = null
+                                            user_id = userId, categoria_id = selectedCategory!!.categoria_id,
+                                            fecha_ingreso = date, nombre_ingreso = concept, descripcion = null,
+                                            monto = montoDouble, recibido = estatusInicial,
+                                            plazo = plazoEnviar, imagen_uri = null
                                         )
                                     )
                                 }
 
                                 if (response.isSuccessful) {
-                                    Toast.makeText(context, "¡Transacción guardada con éxito!", Toast.LENGTH_SHORT).show()
-                                    onNavigateBack() // Regresa al home
+                                    Toast.makeText(context, "¡Transacción guardada!", Toast.LENGTH_SHORT).show()
+                                    onNavigateBack()
                                 } else {
-                                    Toast.makeText(context, "Error al guardar en el servidor", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Error en el servidor", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Error de red: ${e.message}", Toast.LENGTH_LONG).show()
@@ -295,7 +313,7 @@ fun AddExpenseScreen(
                             }
                         }
                     } else {
-                        Toast.makeText(context, "Ingresa un monto y concepto válidos", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Datos inválidos", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),

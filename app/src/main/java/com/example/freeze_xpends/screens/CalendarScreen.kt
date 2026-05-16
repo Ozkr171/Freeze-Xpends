@@ -23,6 +23,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.network.RetrofitClient
+import com.example.freeze_xpends.network.EstatusGastoRequest
+import com.example.freeze_xpends.network.EstatusIngresoRequest
 import com.example.freeze_xpends.theme.*
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -43,21 +45,18 @@ fun CalendarScreen(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope() // <-- AGREGADO PARA EL BOTÓN
     var currentYearMonth by remember { mutableStateOf(YearMonth.now()) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // Llave para forzar la recarga cuando editemos/borremos un gasto
     var refreshKey by remember { mutableStateOf(0) }
 
-    // --- ESTADOS PARA EL DETALLE (MODAL) ---
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
 
-    // Estado para saber si estamos viendo la lista o editando un movimiento en específico
     var transactionToEdit by remember { mutableStateOf<TransaccionItem?>(null) }
 
-    // Guardamos todas las transacciones del mes para filtrarlas rápido
     var allTransactionsMonth by remember { mutableStateOf<List<TransaccionItem>>(emptyList()) }
     var monthlyData by remember { mutableStateOf<Map<LocalDate, DailyExpenseData>>(emptyMap()) }
 
@@ -74,31 +73,48 @@ fun CalendarScreen(
 
             val tempTransactions = mutableListOf<TransaccionItem>()
 
-            // Procesar Gastos
+            // Procesar Gastos (Adaptado al nuevo TransaccionItem)
             listaGastos.forEach {
                 val fechaStr = it.fecha_gasto.substringBefore("T")
                 try {
                     val date = LocalDate.parse(fechaStr)
                     if (YearMonth.from(date) == currentYearMonth) {
-                        tempTransactions.add(TransaccionItem(it.gasto_id, true, it.nombre_gasto, "Gasto", it.monto_gasto, fechaStr, it.plazo ?: "ÚNICO", "PAGADO"))
+                        val isCompleted = it.completado == 1
+                        tempTransactions.add(
+                            TransaccionItem(
+                                id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
+                                categoria = "Gasto", monto = it.monto_gasto, fecha = fechaStr,
+                                frecuencia = it.plazo ?: "ÚNICO",
+                                status = if (isCompleted) "PAGADO" else "PENDIENTE",
+                                isCompleted = isCompleted
+                            )
+                        )
                     }
-                } catch (e: Exception) { /* Ignorar fechas mal formateadas */ }
+                } catch (e: Exception) { }
             }
 
-            // Procesar Ingresos
+            // Procesar Ingresos (Adaptado al nuevo TransaccionItem y con plazo)
             listaIngresos.forEach {
                 val fechaStr = it.fecha_ingreso.substringBefore("T")
                 try {
                     val date = LocalDate.parse(fechaStr)
                     if (YearMonth.from(date) == currentYearMonth) {
-                        tempTransactions.add(TransaccionItem(it.ingreso_id, false, it.nombre_ingreso, it.nombre_categoria ?: "Ingreso", it.monto, fechaStr, "ÚNICO", if(it.recibido == 1) "RECIBIDO" else "PENDIENTE"))
+                        val isCompleted = it.recibido == 1
+                        tempTransactions.add(
+                            TransaccionItem(
+                                id = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
+                                categoria = it.nombre_categoria ?: "Ingreso", monto = it.monto, fecha = fechaStr,
+                                frecuencia = it.plazo ?: "ÚNICO",
+                                status = if (isCompleted) "RECIBIDO" else "NO RECIBIDO",
+                                isCompleted = isCompleted
+                            )
+                        )
                     }
-                } catch (e: Exception) { /* Ignorar fechas mal formateadas */ }
+                } catch (e: Exception) { }
             }
 
             allTransactionsMonth = tempTransactions.sortedByDescending { it.fecha }
 
-            // Agrupar para el Calendario
             val grouped = allTransactionsMonth.groupBy { LocalDate.parse(it.fecha) }
             monthlyData = grouped.mapValues { entry ->
                 DailyExpenseData(entry.value.size, entry.value.sumOf { if (it.isGasto) -it.monto else it.monto })
@@ -122,13 +138,7 @@ fun CalendarScreen(
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(24.dp)) {
 
-            // --- CALENDARIO CARD ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, BorderSlate)
-            ) {
+            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, BorderSlate)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         IconButton(onClick = { currentYearMonth = currentYearMonth.minusMonths(1) }) { Icon(Icons.Default.ChevronLeft, null) }
@@ -165,7 +175,7 @@ fun CalendarScreen(
                                 onClick = {
                                     if (data != null) {
                                         selectedDate = date
-                                        transactionToEdit = null // Aseguramos mostrar la lista al abrir
+                                        transactionToEdit = null
                                         showBottomSheet = true
                                     }
                                 }
@@ -177,7 +187,6 @@ fun CalendarScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- RESUMEN CARD ---
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, BorderSlate)) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     val monthText = currentYearMonth.month.getDisplayName(TextStyle.FULL, Locale("es", "MX"))
@@ -194,17 +203,8 @@ fun CalendarScreen(
         }
     }
 
-    // --- PANEL DE DETALLES Y EDICIÓN (BOTTOM SHEET) ---
     if (showBottomSheet && selectedDate != null) {
-        ModalBottomSheet(
-            onDismissRequest = {
-                showBottomSheet = false
-                transactionToEdit = null
-            },
-            sheetState = sheetState,
-            containerColor = Color.White
-        ) {
-            // SI ESTÁ EN NULL, MOSTRAMOS LA LISTA DEL DÍA
+        ModalBottomSheet(onDismissRequest = { showBottomSheet = false; transactionToEdit = null }, sheetState = sheetState, containerColor = Color.White) {
             if (transactionToEdit == null) {
                 val transactionsOfDay = allTransactionsMonth.filter { LocalDate.parse(it.fecha) == selectedDate }
 
@@ -212,9 +212,7 @@ fun CalendarScreen(
                     Text(
                         text = "Movimientos del ${selectedDate!!.dayOfMonth} de ${selectedDate!!.month.getDisplayName(TextStyle.FULL, Locale("es","MX"))}",
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
-                        fontWeight = FontWeight.Black,
-                        fontSize = 18.sp,
-                        color = TextDark
+                        fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark
                     )
 
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
@@ -230,61 +228,54 @@ fun CalendarScreen(
                                 date = t.fecha,
                                 icon = if(t.isGasto) Icons.Default.TrendingDown else Icons.Default.TrendingUp,
                                 iconColor = color,
-                                onEditClick = {
-                                    // AL HACER CLIC EN EL LÁPIZ, CAMBIAMOS EL ESTADO
-                                    transactionToEdit = t
-                                }
+                                status = t.status,             // <-- ARREGLADO
+                                isCompleted = t.isCompleted,   // <-- ARREGLADO
+                                onToggleClick = {              // <-- ARREGLADO
+                                    scope.launch {
+                                        try {
+                                            val nuevoEstado = if (t.isCompleted) 0 else 1
+                                            if (t.isGasto) {
+                                                val res = RetrofitClient.instance.updateEstatusGasto(t.id, EstatusGastoRequest(nuevoEstado))
+                                                if (res.isSuccessful) refreshKey++
+                                            } else {
+                                                val res = RetrofitClient.instance.updateEstatusIngreso(t.id, EstatusIngresoRequest(nuevoEstado))
+                                                if (res.isSuccessful) refreshKey++
+                                            }
+                                        } catch(e: Exception) {
+                                            println("Error: ${e.message}")
+                                        }
+                                    }
+                                },
+                                onEditClick = { transactionToEdit = t }
                             )
                         }
                     }
                 }
             } else {
-                // SI NO ESTÁ NULL, MOSTRAMOS EL FORMULARIO DE EDICIÓN REAL
                 EditTransactionContent(
                     isPremium = isPremium,
                     isExpense = transactionToEdit!!.isGasto,
                     transaccion = transactionToEdit,
                     userId = userId,
-                    onClose = { transactionToEdit = null }, // Regresa a la lista
-                    onNavigateToPremium = {
-                        showBottomSheet = false
-                        onNavigate("premium")
-                    },
-                    onSaveSuccess = {
-                        showBottomSheet = false
-                        transactionToEdit = null
-                        refreshKey++ // Actualiza el calendario
-                    },
-                    onDeleteSuccess = {
-                        showBottomSheet = false
-                        transactionToEdit = null
-                        refreshKey++ // Actualiza el calendario
-                    }
+                    onClose = { transactionToEdit = null },
+                    onNavigateToPremium = { showBottomSheet = false; onNavigate("premium") },
+                    onSaveSuccess = { showBottomSheet = false; transactionToEdit = null; refreshKey++ },
+                    onDeleteSuccess = { showBottomSheet = false; transactionToEdit = null; refreshKey++ }
                 )
             }
         }
     }
 }
 
-// --- COMPONENTES AUXILIARES ---
-
 @Composable
 fun CalendarDayCell(dayNumber: String, expenseData: DailyExpenseData?, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .height(60.dp)
-            .padding(2.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = expenseData != null) { onClick() },
+        modifier = Modifier.height(60.dp).padding(2.dp).clip(RoundedCornerShape(12.dp)).clickable(enabled = expenseData != null) { onClick() },
         contentAlignment = Alignment.TopCenter
     ) {
         if (expenseData != null) {
             val color = if (expenseData.totalAmount >= 0) AccentGreen else SecondaryRed
-            Column(
-                modifier = Modifier.fillMaxSize().background(color).padding(vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
+            Column(modifier = Modifier.fillMaxSize().background(color).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween) {
                 Text(dayNumber, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
                 Text("${expenseData.transactions}\nmov.", fontSize = 8.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 9.sp)
             }
@@ -298,17 +289,8 @@ fun CalendarDayCell(dayNumber: String, expenseData: DailyExpenseData?, onClick: 
 
 @Composable
 fun SummaryRow(label: String, value: String, isHighlight: Boolean) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(text = label, fontSize = 14.sp, color = TextMuted)
-        Text(
-            text = value,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (isHighlight) PrimaryBlue else TextDark
-        )
+        Text(text = value, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = if (isHighlight) PrimaryBlue else TextDark)
     }
 }

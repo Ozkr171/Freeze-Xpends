@@ -25,6 +25,7 @@ import com.example.freeze_xpends.network.IngresoRequest
 import com.example.freeze_xpends.network.Categoria
 import com.example.freeze_xpends.theme.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,28 +47,35 @@ fun EditTransactionContent(
     val titleText = if (isExpense) "Editar Gasto" else "Editar Ingreso"
     val iconVector = if (isExpense) Icons.Default.TrendingDown else Icons.Default.TrendingUp
 
-    // PRE-LLENADO DE DATOS DESDE LA TRANSACCION
     var amount by remember { mutableStateOf(transaccion?.monto?.toString() ?: "") }
     var concept by remember { mutableStateOf(transaccion?.titulo ?: "") }
     var date by remember { mutableStateOf(transaccion?.fecha ?: "") }
     var isCompleted by remember { mutableStateOf(transaccion?.status == "RECIBIDO" || transaccion?.status == "PAGADO") }
 
-    // CATEGORÍAS REALES
     var categories by remember { mutableStateOf<List<Categoria>>(emptyList()) }
     var selectedCategory by remember { mutableStateOf<Categoria?>(null) }
     var expandedCategory by remember { mutableStateOf(false) }
 
-    // PLAZOS / FRECUENCIA
     var expandedPlazo by remember { mutableStateOf(false) }
     var selectedPlazo by remember { mutableStateOf(transaccion?.frecuencia ?: "Pago Único") }
     val plazos = listOf("Pago Único", "Semanal", "Quincenal", "Mensual", "Anual")
 
-    // --- NUEVOS ESTADOS PREMIUM ---
     var isReminderActive by remember { mutableStateOf(false) }
     var reminderDate by remember { mutableStateOf("") }
     var reminderTime by remember { mutableStateOf("") }
 
-    // CARGAR CATEGORÍAS
+    // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth ->
+            date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
+        },
+        calendar.get(Calendar.YEAR),
+        calendar.get(Calendar.MONTH),
+        calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
     LaunchedEffect(isExpense) {
         try {
             val response = if (isExpense) {
@@ -89,7 +97,6 @@ fun EditTransactionContent(
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
-        // --- 1. HEADER ---
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -117,14 +124,12 @@ fun EditTransactionContent(
         HorizontalDivider(color = BorderSlate.copy(alpha = 0.5f))
         Spacer(modifier = Modifier.height(16.dp))
 
-        // --- 2. CONTENIDO SCROLLABLE ---
         Column(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .verticalScroll(rememberScrollState())
         ) {
 
-            // --- PREMIUM: ICONO / FOTO ---
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Icono / Foto", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                 if (!isPremium) {
@@ -145,7 +150,6 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // MONTO
             Text("Monto total", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             OutlinedTextField(
                 value = amount, onValueChange = { amount = it },
@@ -160,7 +164,6 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // CONCEPTO
             Text("Concepto", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             OutlinedTextField(
                 value = concept, onValueChange = { concept = it },
@@ -172,7 +175,6 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // CATEGORÍAS (REALES DE AIVEN)
             Text("Categoría", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             ExposedDropdownMenuBox(
                 expanded = expandedCategory,
@@ -197,7 +199,6 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // PLAZOS (PREMIUM)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Plazo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                 if (!isPremium) {
@@ -227,7 +228,6 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- PREMIUM: RECORDATORIO ---
             Card(
                 modifier = Modifier.fillMaxWidth().clickable {
                     if (!isPremium) onNavigateToPremium() else isReminderActive = !isReminderActive
@@ -260,19 +260,28 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // FECHA
+            // --- FECHA DINÁMICA CON SELECTOR ---
             Text("Fecha", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
-            OutlinedTextField(
-                value = date, onValueChange = { date = it },
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
-            )
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clickable { datePickerDialog.show() }) {
+                OutlinedTextField(
+                    value = date,
+                    onValueChange = {},
+                    readOnly = true, // Evita abrir el teclado
+                    enabled = false, // Lo hace solo interactivo mediante el click global de la Box
+                    modifier = Modifier.fillMaxWidth(),
+                    trailingIcon = { Icon(Icons.Default.DateRange, null, tint = primaryColor) },
+                    textStyle = LocalTextStyle.current.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        disabledTextColor = TextDark,
+                        disabledBorderColor = BorderSlate,
+                        disabledTrailingIconColor = primaryColor
+                    )
+                )
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ESTADO
             Text("Estado", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(
@@ -306,7 +315,6 @@ fun EditTransactionContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // --- 3. BOTÓN GUARDAR (ACTUALIZAR) ---
         Button(
             onClick = {
                 if (transaccion != null && amount.isNotBlank() && concept.isNotBlank() && selectedCategory != null) {
@@ -322,7 +330,7 @@ fun EditTransactionContent(
                             } else {
                                 RetrofitClient.instance.updateIngreso(
                                     transaccion.id,
-                                    IngresoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, montoDouble, if (isCompleted) 1 else 0, null)
+                                    IngresoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, montoDouble, if (isCompleted) 1 else 0, if (selectedPlazo == "Pago Único") "ÚNICO" else selectedPlazo, null)
                                 )
                             }
 
@@ -353,7 +361,6 @@ fun EditTransactionContent(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // --- 4. BOTÓN ELIMINAR ---
         Button(
             onClick = {
                 if (transaccion != null) {

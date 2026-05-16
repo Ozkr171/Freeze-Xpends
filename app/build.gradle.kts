@@ -6,8 +6,8 @@ plugins {
 
 android {
     buildFeatures {
-        viewBinding = true // Este tal vez ya lo tenías
-        compose = true     // <-- ¡AGREGA ESTA LÍNEA!
+        viewBinding = true
+        compose = true
     }
 
     namespace = "com.example.freeze_xpends"
@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.material)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
+    implementation("io.coil-kt:coil-compose:2.4.0")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

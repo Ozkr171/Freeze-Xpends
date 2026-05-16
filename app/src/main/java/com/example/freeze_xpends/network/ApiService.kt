@@ -48,6 +48,7 @@ data class IngresoRequest(
     val descripcion: String?,
     val monto: Double,
     val recibido: Int,
+    val plazo: String? = "ÚNICO",
     val imagen_uri: String? = null
 )
 
@@ -70,15 +71,19 @@ data class Gasto(
     val fecha_gasto: String,
     val nombre_gasto: String,
     val descripcion: String?, // Restaurado
-    val plazo: String?,       // <-- EL CULPABLE DEL ERROR
+    val plazo: String? = "ÚNICO",
     val monto_gasto: Double,
-    val imagen_uri: String?   // Restaurado
+    val imagen_uri: String?,   // Restaurado
+    val completado: Int? = 0
 )
 data class UserData(
     val user_id: Int,
     val nombre: String?,
     val nombre_s: String?,
-    val premium: Int
+    val correo_electronico: String?,
+    val premium: Int,
+    val divisa: String?,
+    val foto_perfil: String?
 )
 data class Ingreso(
     val ingreso_id: Int,
@@ -86,16 +91,30 @@ data class Ingreso(
     val categoria_id: Int?,
     val fecha_ingreso: String,
     val nombre_ingreso: String,
-    val descripcion: String?, // Restaurado
+    val descripcion: String?,
     val monto: Double,
-    val recibido: Int,
-    val imagen_uri: String?,  // Restaurado
+    val recibido: Int? = 1,
+    val plazo: String? = "ÚNICO",
+    val imagen_uri: String?,
     val nombre_categoria: String?
+)
+
+data class UpdatePerfilRequest(
+    val nombre_s: String,
+    val correo_electronico: String,
+    val contrasena: String? = null,
+    val divisa: String,
+    val foto_perfil: String?
 )
 
 data class PresupuestoGlobalResponse(val presupuesto_global: Double)
 data class PresupuestoGlobalRequest(val presupuesto_global: Double)
 data class LimiteCategoriaRequest(val limite_presupuesto: Double)
+data class NuevaCategoriaGastoRequest(val user_id: Int, val nombre_categoria: String, val limite_presupuesto: Double = 0.0)
+data class NuevaCategoriaIngresoRequest(val user_id: Int, val nombre_categoria: String)
+data class EstatusGastoRequest(val completado: Int)
+data class EstatusIngresoRequest(val recibido: Int)
+
 // --- INTERFAZ RETROFIT ---
 interface ApiService {
 
@@ -128,7 +147,6 @@ interface ApiService {
     @GET("api/usuarios/{user_id}")
     suspend fun getPerfil(@Path("user_id") userId: Int): Response<ApiResponse<UserData>>
 
-    // --- RUTAS DE EDICIÓN Y BORRADO ---
     @PUT("api/gastos/{id}")
     suspend fun updateGasto(@Path("id") id: Int, @Body request: GastoRequest): Response<ApiResponse<Any>>
 
@@ -150,4 +168,18 @@ interface ApiService {
     @PUT("api/categorias/gastos/{categoria_id}/presupuesto")
     suspend fun updateLimiteCategoria(@Path("categoria_id") categoriaId: Int, @Body request: LimiteCategoriaRequest): Response<ApiResponse<Any>>
 
+    @PUT("api/gastos/{id}/estatus")
+    suspend fun updateEstatusGasto(@Path("id") id: Int, @Body request: EstatusGastoRequest): Response<ApiResponse<Any>>
+
+    @PUT("api/ingresos/{id}/estatus")
+    suspend fun updateEstatusIngreso(@Path("id") id: Int, @Body request: EstatusIngresoRequest): Response<ApiResponse<Any>>
+
+    @POST("api/categorias/gastos")
+    suspend fun addCategoriaGasto(@Body request: NuevaCategoriaGastoRequest): Response<ApiResponse<Any>>
+
+    @POST("api/categorias/ingresos")
+    suspend fun addCategoriaIngreso(@Body request: NuevaCategoriaIngresoRequest): Response<ApiResponse<Any>>
+
+    @PUT("api/usuarios/{user_id}")
+    suspend fun updatePerfil(@Path("user_id") userId: Int, @Body request: UpdatePerfilRequest): Response<ApiResponse<Any>>
 }

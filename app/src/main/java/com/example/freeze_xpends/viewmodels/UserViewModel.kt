@@ -18,12 +18,20 @@ class UserViewModel : ViewModel() {
     private val _isPremium = MutableStateFlow(false)
     val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
-    // Actualizamos la función para recibir el correo
-    fun setUserData(id: Int, name: String, email: String, isPremium: Boolean) {
+    // --- NUEVAS VARIABLES ---
+    private val _userCurrency = MutableStateFlow("MXN")
+    val userCurrency: StateFlow<String> = _userCurrency.asStateFlow()
+
+    private val _userPhoto = MutableStateFlow<String?>(null)
+    val userPhoto: StateFlow<String?> = _userPhoto.asStateFlow()
+
+    fun setUserData(id: Int, name: String, email: String, isPremium: Boolean, currency: String = "MXN", photo: String? = null) {
         _userId.value = id
         _userName.value = name
         _userEmail.value = email
         _isPremium.value = isPremium
+        _userCurrency.value = currency
+        _userPhoto.value = photo
     }
 
     fun clearData() {
@@ -31,5 +39,7 @@ class UserViewModel : ViewModel() {
         _userName.value = ""
         _userEmail.value = ""
         _isPremium.value = false
+        _userCurrency.value = "MXN"
+        _userPhoto.value = null
     }
 }

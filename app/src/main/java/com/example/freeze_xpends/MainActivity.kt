@@ -23,17 +23,17 @@ class MainActivity : ComponentActivity() {
 
         // Cargar sesión persistente si existe
         if (sessionManager.isLoggedIn()) {
-            userViewModel.setUserData( // <-- CORREGIDO A setUserData
+            userViewModel.setUserData(
                 id = sessionManager.getUserId(),
                 name = sessionManager.getNombre() ?: "Usuario",
-                email = sessionManager.getEmail(), // Recuperamos el email persistente
+                email = sessionManager.getEmail(),
                 isPremium = sessionManager.isPremium()
             )
         }
 
         setContent {
             val isPremium by userViewModel.isPremium.collectAsState()
-            val userName by userViewModel.userName.collectAsState() // <-- CORREGIDO DE 'nombre' A 'userName'
+            val userName by userViewModel.userName.collectAsState()
 
             AppNavigation(
                 userViewModel = userViewModel,
@@ -53,6 +53,9 @@ fun AppNavigation(
     sessionManager: SessionManager
 ) {
     val navController = rememberNavController()
+
+    // RECOLECTAMOS EL ID DE FORMA SEGURA PARA TODO EL NAVHOST
+    val currentUserId by userViewModel.userId.collectAsState()
 
     NavHost(
         navController = navController,
@@ -83,25 +86,20 @@ fun AppNavigation(
         }
 
         composable("home") {
-            val currentUserId = userViewModel.userId.collectAsState().value
-
             HomeScreen(
                 isPremium = isPremium,
                 userName = userName,
                 userId = currentUserId,
+                userViewModel = userViewModel,
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
 
         composable("settings") {
-            val userEmail by userViewModel.userEmail.collectAsState()
-
             SettingsScreen(
-                userEmail = userEmail,
-                userName = userName,
-                isPremium = isPremium, // <-- CORREGIDO EL ERROR ROJO
+                userViewModel = userViewModel, // <-- PASAMOS EL VIEWMODEL COMPLETO
                 onNavigateBack = { navController.popBackStack() },
-                onNavigate = { route -> navController.navigate(route) }, // <-- CORREGIDO EL ERROR ROJO
+                onNavigate = { route -> navController.navigate(route) },
                 onLogout = {
                     sessionManager.clearSession()
                     userViewModel.clearData()
@@ -131,26 +129,29 @@ fun AppNavigation(
 
         composable(route = "calendar") {
             CalendarScreen(
-                userId = userViewModel.userId.value,
+                userId = currentUserId, // <-- Usamos el estado seguro
                 isPremium = isPremium,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigate = { route -> navController.navigate(route) }
             )
         }
 
-        // En tu MainActivity.kt, cámbialo a:
         composable(route = "budget") {
             BudgetScreen(
-                userId = userViewModel.userId.value,
-                onNavigateBack = { navController.popBackStack() }
+                userId = currentUserId,
+                isPremium = isPremium,  
+                onNavigateBack = { navController.popBackStack() },
+                userViewModel = userViewModel,
+                onNavigateToPremium = { navController.navigate("premium") }
             )
         }
+
         composable("support") { SupportScreen(onNavigateBack = { navController.popBackStack() }) }
 
         composable("premium") {
             PremiumScreen(
                 onPurchaseSuccess = {
-                    // Actualizamos usando setUserData
+                    // Actualizamos la sesión con el ViewModel
                     userViewModel.setUserData(
                         id = userViewModel.userId.value,
                         name = userViewModel.userName.value,
