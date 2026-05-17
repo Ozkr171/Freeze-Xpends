@@ -1,36 +1,61 @@
 package com.example.freeze_xpends.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AllInclusive
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.freeze_xpends.theme.*
+import kotlinx.coroutines.launch
+import com.example.freeze_xpends.R
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PremiumScreen(
     onPurchaseSuccess: () -> Unit,
     onNavigate: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     // Estado para saber cuál plan está seleccionado (Default: Anual)
     var selectedPlan by remember { mutableStateOf("ANUAL") }
+
+    // Estados para la pasarela de pago
+    var showPaymentSheet by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Mapa de precios para mostrar en el ticket de compra
+    val priceMap = mapOf(
+        "MENSUAL" to "$25.00 MXN",
+        "ANUAL" to "$125.00 MXN",
+        "LIFETIME" to "$150.00 MXN"
+    )
 
     Column(
         modifier = Modifier
@@ -191,9 +216,9 @@ fun PremiumScreen(
 
             Spacer(modifier = Modifier.height(40.dp))
 
-            // --- 5. BOTÓN ACEPTAR ---
+            // --- 5. BOTÓN ACEPTAR (AHORA ABRE EL MODAL DE PAGO) ---
             Button(
-                onClick = onPurchaseSuccess,
+                onClick = { showPaymentSheet = true },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(64.dp),
@@ -209,6 +234,95 @@ fun PremiumScreen(
                 fontSize = 10.sp,
                 modifier = Modifier.padding(top = 16.dp, bottom = 24.dp)
             )
+        }
+    }
+
+    // --- 6. PASARELA DE PAGO FALSA (GOOGLE PLAY STYLE) ---
+    if (showPaymentSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showPaymentSheet = false },
+            sheetState = sheetState,
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp)
+            ) {
+                // Cabecera Google Play
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Confirmar Suscripción", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextMuted)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Detalles de la App
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Usamos Image para jalar tu logo real
+                    Image(
+                        painter = painterResource(id = R.drawable.logo_fx), // <-- CAMBIA ESTO POR EL NOMBRE DE TU LOGO
+                        contentDescription = "Logo Freeze-Xpends",
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PrimaryBlue), // Le dejo un fondo azul por si tu logo es transparente
+                        contentScale = ContentScale.Crop
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text("Freeze-Xpends Premium", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
+                        Text("Suscripción ${selectedPlan.lowercase().replaceFirstChar { it.uppercase() }}", fontSize = 14.sp, color = TextMuted)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                HorizontalDivider(color = BorderSlate)
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Tarjeta
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.CreditCard, contentDescription = "Tarjeta", tint = TextMuted, modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Mastercard **** 4291", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                    }
+                    Icon(Icons.Default.Star, contentDescription = "Seleccionar", tint = PrimaryBlue, modifier = Modifier.size(16.dp))
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // Botón de compra
+                Button(
+                    onClick = {
+                        scope.launch {
+                            sheetState.hide() // Ocultamos la pasarela con animación
+                            showPaymentSheet = false
+                            Toast.makeText(context, "Pago exitoso. ¡Bienvenido a Premium!", Toast.LENGTH_LONG).show()
+                            onPurchaseSuccess() // Ahora sí le decimos a Node.js que somos Premium
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentGreen), // Verde de compra
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "Suscribirse por ${priceMap[selectedPlan]}",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp)) // Espacio final del bottom sheet
+            }
         }
     }
 }

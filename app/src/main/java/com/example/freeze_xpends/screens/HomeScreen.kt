@@ -1,5 +1,6 @@
 package com.example.freeze_xpends.screens
 
+import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,10 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.EstatusGastoRequest
 import com.example.freeze_xpends.network.EstatusIngresoRequest
@@ -39,7 +43,8 @@ data class TransaccionItem(
     val fecha: String,
     val frecuencia: String,
     val status: String,
-    val isCompleted: Boolean
+    val isCompleted: Boolean,
+    val imagen_uri: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,11 +131,12 @@ fun HomeScreen(
                 TransaccionItem(
                     id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
                     categoria = "Gasto",
-                    monto = it.monto_gasto * exchangeRate, // <-- Conversión individual
+                    monto = it.monto_gasto * exchangeRate,
                     fecha = it.fecha_gasto.substringBefore("T"),
                     frecuencia = it.plazo ?: "ÚNICO",
                     status = if(isCompleted) "PAGADO" else "PENDIENTE",
-                    isCompleted = isCompleted
+                    isCompleted = isCompleted,
+                    imagen_uri = it.imagen_uri
                 )
             }
 
@@ -139,11 +145,12 @@ fun HomeScreen(
                 TransaccionItem(
                     id = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
                     categoria = it.nombre_categoria ?: "Ingreso",
-                    monto = it.monto * exchangeRate, // <-- Conversión individual
+                    monto = it.monto * exchangeRate,
                     fecha = it.fecha_ingreso.substringBefore("T"),
                     frecuencia = it.plazo ?: "ÚNICO",
                     status = if(isCompleted) "RECIBIDO" else "PENDIENTE",
-                    isCompleted = isCompleted
+                    isCompleted = isCompleted,
+                    imagen_uri = it.imagen_uri
                 )
             }
 
@@ -270,6 +277,7 @@ fun HomeScreen(
                             title = t.titulo, category = t.categoria, freq = t.frecuencia, amount = moneyText,
                             date = t.fecha, icon = iconImage, iconColor = iconColor,
                             status = t.status, isCompleted = t.isCompleted,
+                            imagenUri = t.imagen_uri, // <--- PASAMOS LA URI AQUÍ
                             onToggleClick = {
                                 scope.launch {
                                     try {
@@ -331,7 +339,9 @@ fun SummaryCard(label: String, amount: String, icon: androidx.compose.ui.graphic
 fun TransactionCard(
     title: String, category: String, freq: String, amount: String, date: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color,
-    status: String, isCompleted: Boolean, onToggleClick: () -> Unit, onEditClick: () -> Unit
+    status: String, isCompleted: Boolean,
+    imagenUri: String? = null, // <--- NUEVO PARÁMETRO
+    onToggleClick: () -> Unit, onEditClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
@@ -340,9 +350,28 @@ fun TransactionCard(
         shape = RoundedCornerShape(16.dp)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(48.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(icon, null, tint = iconColor)
+
+            // --- BOX ACTUALIZADO PARA MOSTRAR LA FOTO ---
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(iconColor.copy(0.1f), CircleShape)
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (!imagenUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = Uri.parse(imagenUri),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    )
+                } else {
+                    Icon(icon, null, tint = iconColor)
+                }
             }
+
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextDark)

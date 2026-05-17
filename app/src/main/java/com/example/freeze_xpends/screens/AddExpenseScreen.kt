@@ -1,6 +1,11 @@
 package com.example.freeze_xpends.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,12 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.GastoRequest
 import com.example.freeze_xpends.network.IngresoRequest
@@ -68,6 +75,27 @@ fun AddExpenseScreen(
     var isReminderActive by rememberSaveable { mutableStateOf(false) }
     var reminderDate by rememberSaveable { mutableStateOf("") }
     var reminderTime by rememberSaveable { mutableStateOf("") }
+
+    // --- MAGIA DEL SELECTOR DE FOTOS ---
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                // Esto le dice a Android: "Guárdame permiso para ver esta foto para siempre"
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                selectedImageUri = uri
+            } catch (e: Exception) {
+                e.printStackTrace()
+                selectedImageUri = uri // Si falla lo persistente, al menos la mostramos ahorita
+            }
+        }
+    }
 
     // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
     val calendar = Calendar.getInstance()
@@ -124,15 +152,40 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            SectionHeader("ICONO / FOTO", Icons.Default.Image, isLocked = !isPremium)
+            // --- FOTO DEL RECIBO (ACTUALIZADO) ---
+            SectionHeader("ICONO / FOTO DEL RECIBO", Icons.Default.Image, isLocked = !isPremium)
             Box(
-                modifier = Modifier.fillMaxWidth().height(100.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
-                    .clickable { if (!isPremium) onNavigateToPremium() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp) // Un poco más alto para ver la foto chido
+                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        if (isPremium) {
+                            // Si es premium, abre su galería de fotos
+                            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        } else {
+                            onNavigateToPremium()
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
-                    Text("SUBIR IMAGEN PERSONALIZADA", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                if (selectedImageUri != null) {
+                    // Si ya seleccionó una foto, la pintamos con Coil
+                    AsyncImage(
+                        model = selectedImageUri,
+                        contentDescription = "Foto seleccionada",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop // Corta los bordes para rellenar el cuadro
+                    )
+                } else {
+                    // Si no hay foto, mostramos el botón
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("SUBIR IMAGEN DEL RECIBO", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -163,7 +216,6 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- SECCIÓN FECHA DINÁMICA CON DATAPICKER ---
             SectionHeader("FECHA DE INICIO", Icons.Default.DateRange)
             Box(modifier = Modifier.fillMaxWidth().clickable { datePickerDialog.show() }) {
                 OutlinedTextField(
@@ -281,12 +333,15 @@ fun AddExpenseScreen(
                                 val plazoEnviar = if (isUnico) "ÚNICO" else selectedFrequency
                                 val estatusInicial = if (isUnico) 1 else 0
 
+                                // ¡Aquí mandamos el Link de la foto a Aiven! (Si es que hay una)
+                                val imagenString = selectedImageUri?.toString()
+
                                 val response = if (isExpense) {
                                     RetrofitClient.instance.addGasto(
                                         GastoRequest(
                                             user_id = userId, categoria_id = selectedCategory!!.categoria_id,
                                             fecha_gasto = date, nombre_gasto = concept, descripcion = null,
-                                            plazo = plazoEnviar, monto_gasto = montoDouble, imagen_uri = null
+                                            plazo = plazoEnviar, monto_gasto = montoDouble, imagen_uri = imagenString
                                         )
                                     )
                                 } else {
@@ -295,7 +350,7 @@ fun AddExpenseScreen(
                                             user_id = userId, categoria_id = selectedCategory!!.categoria_id,
                                             fecha_ingreso = date, nombre_ingreso = concept, descripcion = null,
                                             monto = montoDouble, recibido = estatusInicial,
-                                            plazo = plazoEnviar, imagen_uri = null
+                                            plazo = plazoEnviar, imagen_uri = imagenString
                                         )
                                     )
                                 }

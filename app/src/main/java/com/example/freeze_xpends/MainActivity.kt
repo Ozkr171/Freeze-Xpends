@@ -1,16 +1,21 @@
 package com.example.freeze_xpends
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.freeze_xpends.screens.*
 import com.example.freeze_xpends.utils.SessionManager
 import com.example.freeze_xpends.viewmodels.UserViewModel
+
+import kotlinx.coroutines.launch
+import com.example.freeze_xpends.network.RetrofitClient
 
 class MainActivity : ComponentActivity() {
 
@@ -52,6 +57,8 @@ fun AppNavigation(
     userName: String,
     sessionManager: SessionManager
 ) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val navController = rememberNavController()
 
     // RECOLECTAMOS EL ID DE FORMA SEGURA PARA TODO EL NAVHOST
@@ -107,7 +114,31 @@ fun AppNavigation(
                         popUpTo(0) { inclusive = true }
                     }
                 },
-                onDeleteAccount = {  }
+                onDeleteAccount = {
+                    scope.launch {
+                        try {
+                            // 1. Le decimos a Node.js que borre al usuario de Aiven (Cascada)
+                            val res = RetrofitClient.instance.deleteUsuario(currentUserId)
+
+                            if (res.isSuccessful) {
+                                Toast.makeText(context, "Cuenta eliminada para siempre 💥", Toast.LENGTH_LONG).show()
+
+                                // 2. Limpiamos los datos locales del celular
+                                sessionManager.clearSession()
+                                userViewModel.clearData()
+
+                                // 3. Lo mandamos a patadas a la pantalla de Login
+                                navController.navigate("login") {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            } else {
+                                Toast.makeText(context, "Error al eliminar la cuenta", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Error de red: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
             )
         }
 

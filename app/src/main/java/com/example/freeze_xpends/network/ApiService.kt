@@ -107,6 +107,7 @@ data class UpdatePerfilRequest(
     val foto_perfil: String?
 )
 
+
 data class PresupuestoGlobalResponse(val presupuesto_global: Double)
 data class PresupuestoGlobalRequest(val presupuesto_global: Double)
 data class LimiteCategoriaRequest(val limite_presupuesto: Double)
@@ -114,6 +115,10 @@ data class NuevaCategoriaGastoRequest(val user_id: Int, val nombre_categoria: St
 data class NuevaCategoriaIngresoRequest(val user_id: Int, val nombre_categoria: String)
 data class EstatusGastoRequest(val completado: Int)
 data class EstatusIngresoRequest(val recibido: Int)
+
+data class Nota(val nota_id: Int, val user_id: Int, val fecha: String, val texto: String)
+data class NuevaNota(val user_id: Int, val fecha: String, val texto: String)
+data class ActualizarNota(val texto: String)
 
 // --- INTERFAZ RETROFIT ---
 interface ApiService {
@@ -182,4 +187,19 @@ interface ApiService {
 
     @PUT("api/usuarios/{user_id}")
     suspend fun updatePerfil(@Path("user_id") userId: Int, @Body request: UpdatePerfilRequest): Response<ApiResponse<Any>>
+
+    @GET("api/notas/{user_id}/{fecha}")
+    suspend fun getNotas(@Path("user_id") userId: Int, @Path("fecha") fecha: String): Response<ApiResponse<List<Nota>>>
+
+    @POST("api/notas")
+    suspend fun addNota(@Body request: NuevaNota): Response<ApiResponse<Any>>
+
+    @DELETE("api/notas/{nota_id}")
+    suspend fun deleteNota(@Path("nota_id") notaId: Int): Response<ApiResponse<Any>>
+
+    @PUT("api/notas/{nota_id}")
+    suspend fun updateNota(@Path("nota_id") notaId: Int, @Body request: ActualizarNota): Response<ApiResponse<Any>>
+
+    @DELETE("api/usuarios/{user_id}")
+    suspend fun deleteUsuario(@Path("user_id") userId: Int): Response<ApiResponse<Any>>
 }

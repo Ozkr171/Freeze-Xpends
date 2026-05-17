@@ -1,5 +1,6 @@
 package com.example.freeze_xpends.screens
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,6 +37,10 @@ fun SettingsScreen(
     val userEmail by userViewModel.userEmail.collectAsState()
     val isPremium by userViewModel.isPremium.collectAsState()
     val userPhoto by userViewModel.userPhoto.collectAsState()
+
+    // Contexto para abrir links y Estado para el diálogo de autodestrucción
+    val context = LocalContext.current
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundSlate)) {
         // --- HEADER ---
@@ -76,22 +82,25 @@ fun SettingsScreen(
                     HorizontalDivider(color = BorderSlate.copy(0.5f))
 
                     // --- RECUPERADOS PARA LA FASE D ---
-                    SettingsItem("Formato de Visualización", Icons.Default.Numbers) { /* TODO: Fase D */ }
+                    SettingsItem("Formato de Visualización", Icons.Default.Numbers) { /* TODO: Formato de números */ }
                     HorizontalDivider(color = BorderSlate.copy(0.5f))
 
                     SettingsItem("Soporte Técnico", Icons.Default.HeadsetMic) { onNavigate("support") }
                     HorizontalDivider(color = BorderSlate.copy(0.5f))
 
-                    // --- RECUPERADOS PARA LA FASE D ---
-                    SettingsItem("Términos y Condiciones", Icons.Default.Description) { /* TODO: Fase D (PDF) */ }
+                    // --- TÉRMINOS Y CONDICIONES (Mata el Ítem 3) ---
+                    SettingsItem("Términos y Condiciones", Icons.Default.Description) {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://drive.google.com/file/d/1Hy4fjBffp3oGvueWhvSTiqWRjDd7VhjB/view?usp=sharing"))
+                        context.startActivity(intent)
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- BOTÓN ELIMINAR CUENTA / DATOS ---
+            // --- BOTÓN ELIMINAR CUENTA (Dispara el Modal) ---
             Button(
-                onClick = onDeleteAccount, // Ya está conectado al parámetro de la función
+                onClick = { showDeleteDialog = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFDE8E8)),
                 shape = RoundedCornerShape(12.dp)
@@ -118,6 +127,41 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    // --- MODAL DE CONFIRMACIÓN DE AUTODESTRUCCIÓN ---
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = {
+                Text("¿Eliminar Cuenta?", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
+            },
+            text = {
+                Text(
+                    "Esta acción borrará permanentemente todos tus gastos, ingresos, presupuestos y tu usuario. No se puede deshacer.",
+                    color = TextMuted,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteDialog = false
+                        onDeleteAccount() // Aquí explota todo 💥
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryRed)
+                ) {
+                    Text("Sí, Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancelar", color = TextMuted, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(16.dp)
+        )
     }
 }
 

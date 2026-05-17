@@ -16,7 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext // VITAL para los Intents
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -25,7 +25,7 @@ import com.example.freeze_xpends.theme.*
 
 @Composable
 fun SupportScreen(onNavigateBack: () -> Unit) {
-    // Necesitamos el contexto para abrir otras apps (correo, teléfono)
+    // Necesitamos el contexto para abrir la app de correo
     val context = LocalContext.current
 
     Column(
@@ -86,20 +86,7 @@ fun SupportScreen(onNavigateBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- 2. OPCIONES DE CONTACTO (AHORA SON FUNCIONALES) ---
-
-            ContactOptionCard(
-                icon = Icons.Outlined.ChatBubbleOutline,
-                title = "Chat en vivo",
-                subtitle = "Respuesta inmediata",
-                onClick = {
-                    // Simulación con un mensajito Toast
-                    Toast.makeText(context, "Conectando con un asesor...", Toast.LENGTH_SHORT).show()
-                }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // --- 2. OPCIONES DE CONTACTO (AHORA SOLO EMAIL) ---
             ContactOptionCard(
                 icon = Icons.Outlined.Email,
                 title = "Email",
@@ -114,24 +101,9 @@ fun SupportScreen(onNavigateBack: () -> Unit) {
                 }
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            ContactOptionCard(
-                icon = Icons.Outlined.Phone,
-                title = "Teléfono",
-                subtitle = "+52 800 123 4567",
-                onClick = {
-                    // Acción nativa para abrir el marcador del celular
-                    val intent = Intent(Intent.ACTION_DIAL).apply {
-                        data = Uri.parse("tel:+528001234567")
-                    }
-                    context.startActivity(intent)
-                }
-            )
-
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- 3. PREGUNTAS FRECUENTES (AHORA EXPANDIBLES) ---
+            // --- 3. PREGUNTAS FRECUENTES (EXPANDIBLES) ---
             Text(
                 text = "Preguntas frecuentes",
                 modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 16.dp),
@@ -161,11 +133,11 @@ fun SupportScreen(onNavigateBack: () -> Unit) {
     }
 }
 
-// Actualizamos ContactOptionCard para recibir la acción de "onClick"
+// Componente ContactOptionCard
 @Composable
 fun ContactOptionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }, // AQUI SE EJECUTA
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = Color.White),
         shape = RoundedCornerShape(16.dp),
         border = BorderStroke(1.dp, BorderSlate)
@@ -190,13 +162,13 @@ fun ContactOptionCard(icon: ImageVector, title: String, subtitle: String, onClic
     }
 }
 
-// Actualizamos FaqItem para que sea un acordeón expandible
+// Componente FaqItem (Acordeón expandible)
 @Composable
 fun FaqItem(question: String, answer: String) {
     var expanded by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded }, // Alterna el estado
+        modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
         color = Color.White,
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.dp, BorderSlate)
@@ -214,14 +186,12 @@ fun FaqItem(question: String, answer: String) {
                     color = TextDark,
                     modifier = Modifier.weight(1f)
                 )
-                // Cambia el icono dependiendo si está abierto o cerrado
                 Icon(
                     imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                     contentDescription = null,
                     tint = TextMuted
                 )
             }
-            // Si está expandido, muestra la respuesta
             if (expanded) {
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = BorderSlate.copy(alpha = 0.3f))

@@ -1,6 +1,11 @@
 package com.example.freeze_xpends.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -13,12 +18,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.GastoRequest
 import com.example.freeze_xpends.network.IngresoRequest
@@ -63,6 +72,42 @@ fun EditTransactionContent(
     var isReminderActive by remember { mutableStateOf(false) }
     var reminderDate by remember { mutableStateOf("") }
     var reminderTime by remember { mutableStateOf("") }
+
+    // --- MAGIA DEL SELECTOR DE FOTOS (CON FIX PARA PERMISOS CADUCADOS) ---
+    var selectedImageUri by remember {
+        mutableStateOf(
+            if (!transaccion?.imagen_uri.isNullOrBlank()) {
+                try {
+                    val uri = Uri.parse(transaccion?.imagen_uri)
+                    // Verificar que el permiso de Android aún existe intentando leerlo
+                    context.contentResolver.query(uri, null, null, null, null)?.close()
+                    uri
+                } catch (e: Exception) {
+                    null // Si el permiso expiró o fue revocado, lo mandamos a null para no crashear
+                }
+            } else {
+                null
+            }
+        )
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                // Guarda el permiso de forma persistente
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+                selectedImageUri = uri
+            } catch (e: Exception) {
+                e.printStackTrace()
+                selectedImageUri = uri
+            }
+        }
+    }
 
     // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
     val calendar = Calendar.getInstance()
@@ -130,21 +175,45 @@ fun EditTransactionContent(
                 .verticalScroll(rememberScrollState())
         ) {
 
+            // --- FOTO DEL RECIBO (ACTUALIZADO CON PLACEHOLDER DE ERROR) ---
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Icono / Foto", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                Text("Icono / Foto del Recibo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                 if (!isPremium) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(Icons.Default.Lock, null, tint = SecondaryRed, modifier = Modifier.size(12.dp))
                 }
             }
             Box(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(100.dp).background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
-                    .clickable { if (!isPremium) onNavigateToPremium() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .height(140.dp)
+                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        if (isPremium) {
+                            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        } else {
+                            onNavigateToPremium()
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
-                    Text("SUBIR IMAGEN PERSONALIZADA", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                if (selectedImageUri != null) {
+                    // Muestra la imagen nueva que seleccionó con Coil, y si falla pone un placeholder
+                    AsyncImage(
+                        model = selectedImageUri,
+                        contentDescription = "Foto seleccionada",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        error = painterResource(id = android.R.drawable.ic_menu_gallery)
+                    )
+                } else {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
+                        Text("CAMBIAR IMAGEN DEL RECIBO", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
@@ -266,8 +335,8 @@ fun EditTransactionContent(
                 OutlinedTextField(
                     value = date,
                     onValueChange = {},
-                    readOnly = true, // Evita abrir el teclado
-                    enabled = false, // Lo hace solo interactivo mediante el click global de la Box
+                    readOnly = true,
+                    enabled = false,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = { Icon(Icons.Default.DateRange, null, tint = primaryColor) },
                     textStyle = LocalTextStyle.current.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark),
@@ -322,15 +391,36 @@ fun EditTransactionContent(
                         isLoading = true
                         try {
                             val montoDouble = amount.toDoubleOrNull() ?: 0.0
+                            val imagenString = selectedImageUri?.toString() // Captura la foto en texto
+
                             val response = if (isExpense) {
                                 RetrofitClient.instance.updateGasto(
                                     transaccion.id,
-                                    GastoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, if (selectedPlazo == "Pago Único") null else selectedPlazo, montoDouble, null)
+                                    GastoRequest(
+                                        user_id = userId,
+                                        categoria_id = selectedCategory!!.categoria_id,
+                                        fecha_gasto = date,
+                                        nombre_gasto = concept,
+                                        descripcion = null,
+                                        plazo = if (selectedPlazo == "Pago Único") null else selectedPlazo,
+                                        monto_gasto = montoDouble,
+                                        imagen_uri = imagenString
+                                    )
                                 )
                             } else {
                                 RetrofitClient.instance.updateIngreso(
                                     transaccion.id,
-                                    IngresoRequest(userId, selectedCategory!!.categoria_id, date, concept, null, montoDouble, if (isCompleted) 1 else 0, if (selectedPlazo == "Pago Único") "ÚNICO" else selectedPlazo, null)
+                                    IngresoRequest(
+                                        user_id = userId,
+                                        categoria_id = selectedCategory!!.categoria_id,
+                                        fecha_ingreso = date,
+                                        nombre_ingreso = concept,
+                                        descripcion = null,
+                                        monto = montoDouble,
+                                        recibido = if (isCompleted) 1 else 0,
+                                        plazo = if (selectedPlazo == "Pago Único") "ÚNICO" else selectedPlazo,
+                                        imagen_uri = imagenString
+                                    )
                                 )
                             }
 

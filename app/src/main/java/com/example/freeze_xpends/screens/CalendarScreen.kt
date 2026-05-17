@@ -22,9 +22,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.freeze_xpends.network.ActualizarNota
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.EstatusGastoRequest
 import com.example.freeze_xpends.network.EstatusIngresoRequest
+import com.example.freeze_xpends.network.Nota
+import com.example.freeze_xpends.network.NuevaNota
 import com.example.freeze_xpends.theme.*
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
@@ -45,7 +48,7 @@ fun CalendarScreen(
     onNavigate: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope() // <-- AGREGADO PARA EL BOTÓN
+    val scope = rememberCoroutineScope()
     var currentYearMonth by remember { mutableStateOf(YearMonth.now()) }
     var isLoading by remember { mutableStateOf(false) }
 
@@ -61,6 +64,29 @@ fun CalendarScreen(
     var monthlyData by remember { mutableStateOf<Map<LocalDate, DailyExpenseData>>(emptyMap()) }
 
     val moneyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
+
+    // --- ESTADOS Y LÓGICA DE NOTAS ---
+    var notas by remember { mutableStateOf<List<Nota>>(emptyList()) }
+    var textoNuevaNota by remember { mutableStateOf("") }
+    var cargandoNotas by remember { mutableStateOf(false) }
+    var recargarNotas by remember { mutableStateOf(0) } // Trigger para recargar al agregar/borrar
+    var notaEnEdicion by remember { mutableStateOf<Nota?>(null) }
+
+    LaunchedEffect(selectedDate, recargarNotas) {
+        if (selectedDate == null) return@LaunchedEffect
+        cargandoNotas = true
+        try {
+            val fechaStr = selectedDate.toString()
+            val response = RetrofitClient.instance.getNotas(userId, fechaStr)
+            if (response.isSuccessful) {
+                notas = response.body()?.data ?: emptyList()
+            }
+        } catch(e: Exception) {
+            Toast.makeText(context, "Error cargando notas: ${e.message}", Toast.LENGTH_SHORT).show()
+        } finally {
+            cargandoNotas = false
+        }
+    }
 
     LaunchedEffect(currentYearMonth, refreshKey) {
         isLoading = true
@@ -173,11 +199,12 @@ fun CalendarScreen(
                                 dayNumber = day.toString(),
                                 expenseData = data,
                                 onClick = {
-                                    if (data != null) {
-                                        selectedDate = date
-                                        transactionToEdit = null
-                                        showBottomSheet = true
-                                    }
+                                    selectedDate = date
+                                    transactionToEdit = null
+                                    notas = emptyList()
+                                    textoNuevaNota = ""
+                                    notaEnEdicion = null
+                                    showBottomSheet = true
                                 }
                             )
                         }
@@ -203,6 +230,7 @@ fun CalendarScreen(
         }
     }
 
+    // --- BOTTOM SHEET (DETALLES Y NOTAS) ---
     if (showBottomSheet && selectedDate != null) {
         ModalBottomSheet(onDismissRequest = { showBottomSheet = false; transactionToEdit = null }, sheetState = sheetState, containerColor = Color.White) {
             if (transactionToEdit == null) {
@@ -228,9 +256,9 @@ fun CalendarScreen(
                                 date = t.fecha,
                                 icon = if(t.isGasto) Icons.Default.TrendingDown else Icons.Default.TrendingUp,
                                 iconColor = color,
-                                status = t.status,             // <-- ARREGLADO
-                                isCompleted = t.isCompleted,   // <-- ARREGLADO
-                                onToggleClick = {              // <-- ARREGLADO
+                                status = t.status,
+                                isCompleted = t.isCompleted,
+                                onToggleClick = {
                                     scope.launch {
                                         try {
                                             val nuevoEstado = if (t.isCompleted) 0 else 1
@@ -241,8 +269,8 @@ fun CalendarScreen(
                                                 val res = RetrofitClient.instance.updateEstatusIngreso(t.id, EstatusIngresoRequest(nuevoEstado))
                                                 if (res.isSuccessful) refreshKey++
                                             }
-                                        } catch(e: Exception) {
-                                            println("Error: ${e.message}")
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Error al guardar nota: ${e.message}", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -250,6 +278,150 @@ fun CalendarScreen(
                             )
                         }
                     }
+
+                    // --- INICIO DEL PASO B: UI DE NOTAS DEL DÍA ---
+                    Spacer(modifier = Modifier.height(24.dp))
+                    HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = BorderSlate)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "📝 NOTAS DEL DÍA",
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Black,
+                        color = TextDark,
+                        letterSpacing = 1.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Input y Botón Agregar
+                    // Input y Botones
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = textoNuevaNota,
+                            onValueChange = { textoNuevaNota = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text(if (notaEnEdicion != null) "Editando nota..." else "Escribe una nota...", fontSize = 14.sp) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                unfocusedBorderColor = BorderSlate,
+                                focusedBorderColor = PrimaryBlue
+                            )
+                        )
+
+                        // Si está editando, mostramos un botón de "X" para cancelar
+                        if (notaEnEdicion != null) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = {
+                                    notaEnEdicion = null
+                                    textoNuevaNota = ""
+                                },
+                                modifier = Modifier.background(BorderSlate, RoundedCornerShape(12.dp)).size(56.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancelar", tint = TextDark)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                if (textoNuevaNota.isNotBlank()) {
+                                    scope.launch {
+                                        try {
+                                            if (notaEnEdicion != null) {
+                                                // --- MODO EDICIÓN ---
+                                                val req = ActualizarNota(textoNuevaNota)
+                                                val res = RetrofitClient.instance.updateNota(notaEnEdicion!!.nota_id, req)
+                                                if (res.isSuccessful) {
+                                                    textoNuevaNota = ""
+                                                    notaEnEdicion = null
+                                                    recargarNotas++
+                                                    Toast.makeText(context, "Nota editada ✔", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Error al editar (${res.code()})", Toast.LENGTH_LONG).show()
+                                                }
+                                            } else {
+                                                // --- MODO NUEVO ---
+                                                val req = NuevaNota(userId, selectedDate.toString(), textoNuevaNota)
+                                                val res = RetrofitClient.instance.addNota(req)
+                                                if (res.isSuccessful) {
+                                                    textoNuevaNota = ""
+                                                    recargarNotas++
+                                                    Toast.makeText(context, "Nota guardada ✔", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Error al guardar (${res.code()})", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Error de red: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.background(if (notaEnEdicion != null) AccentGreen else PrimaryBlue, RoundedCornerShape(12.dp)).size(56.dp)
+                        ) {
+                            Icon(if (notaEnEdicion != null) Icons.Default.Check else Icons.Default.Add, contentDescription = "Guardar", tint = Color.White)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Lista de notas guardadas
+                    if (cargandoNotas) {
+                        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = PrimaryBlue)
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                            notas.forEach { nota ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Box(modifier = Modifier.size(6.dp).background(if (notaEnEdicion?.nota_id == nota.nota_id) AccentGreen else TextMuted, CircleShape))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(nota.texto, fontSize = 14.sp, color = TextDark)
+                                    }
+                                    Row {
+                                        // BOTÓN EDITAR
+                                        IconButton(
+                                            onClick = {
+                                                notaEnEdicion = nota
+                                                textoNuevaNota = nota.texto
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Editar", tint = TextMuted, modifier = Modifier.size(18.dp))
+                                        }
+                                        // BOTÓN BORRAR
+                                        IconButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    try {
+                                                        val res = RetrofitClient.instance.deleteNota(nota.nota_id)
+                                                        if (res.isSuccessful) recargarNotas++
+                                                    } catch (e: Exception) { }
+                                                }
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Borrar", tint = SecondaryRed, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // --- FIN DEL PASO B ---
                 }
             } else {
                 EditTransactionContent(
@@ -270,7 +442,7 @@ fun CalendarScreen(
 @Composable
 fun CalendarDayCell(dayNumber: String, expenseData: DailyExpenseData?, onClick: () -> Unit) {
     Box(
-        modifier = Modifier.height(60.dp).padding(2.dp).clip(RoundedCornerShape(12.dp)).clickable(enabled = expenseData != null) { onClick() },
+        modifier = Modifier.height(60.dp).padding(2.dp).clip(RoundedCornerShape(12.dp)).clickable { onClick() },
         contentAlignment = Alignment.TopCenter
     ) {
         if (expenseData != null) {
