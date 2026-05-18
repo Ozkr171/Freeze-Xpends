@@ -47,7 +47,7 @@ data class BudgetCategoryData(
 fun BudgetScreen(
     userId: Int,
     isPremium: Boolean,
-    userViewModel: UserViewModel, // <--- AÑADIDO PARA LEER DIVISA
+    userViewModel: UserViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToPremium: () -> Unit
 ) {
@@ -71,12 +71,35 @@ fun BudgetScreen(
     var editingCategory by remember { mutableStateOf<BudgetCategoryData?>(null) }
     var budgetAmountInput by remember { mutableStateOf("") }
 
-    val catColorsGastos = listOf(SecondaryRed, Color(0xFFE91E63), Color(0xFF9C27B0), Color(0xFFFF9800), Color(0xFF795548))
-    val catColorsIngresos = listOf(AccentGreen, PrimaryBlue, Color(0xFF009688), Color(0xFF8BC34A), Color(0xFF03A9F4))
+    val catColorsGastos = listOf(
+        SecondaryRed,
+        Color(0xFFE91E63),        // Rosa vibrante
+        Color(0xFF9C27B0),        // Morado
+        Color(0xFFFF9800),        // Naranja
+        Color(0xFF795548),        // Café
+        Color(0xFFF44336),        // Rojo Material
+        Color(0xFF673AB7),        // Morado profundo
+        Color(0xFFFF5722),        // Naranja profundo
+        Color(0xFFD32F2F),        // Rojo oscuro
+        Color(0xFFC2185B)         // Rosa oscuro
+    )
+
+    val catColorsIngresos = listOf(
+        AccentGreen,
+        PrimaryBlue,
+        Color(0xFF009688),        // Turquesa (Teal)
+        Color(0xFF8BC34A),        // Verde claro
+        Color(0xFF03A9F4),        // Azul claro
+        Color(0xFF4CAF50),        // Verde Material
+        Color(0xFF00BCD4),        // Cyan
+        Color(0xFF3F51B5),        // Indigo
+        Color(0xFFCDDC39),        // Lima
+        Color(0xFF00796B)         // Turquesa oscuro
+    )
     val catIcons = listOf(Icons.Default.Home, Icons.Default.Settings, Icons.Default.Restaurant, Icons.Default.DirectionsCar, Icons.Default.Favorite, Icons.Default.Star)
 
-    // --- MOTOR DE CONVERSIÓN ---
     val currentCurrency by userViewModel.userCurrency.collectAsState()
+    val userFormat by userViewModel.userFormat.collectAsState()
     val exchangeRate = when (currentCurrency) {
         "USD" -> 0.05f
         "EUR" -> 0.045f
@@ -96,11 +119,13 @@ fun BudgetScreen(
             if (resPresupuesto.isSuccessful) mainBudgetLimit = (resPresupuesto.body()?.presupuesto_global?.toFloat() ?: 0f) * exchangeRate
 
             val resGastos = RetrofitClient.instance.getGastos(userId)
-            rawGastos = resGastos.body()?.data ?: emptyList()
+            // --- FILTRO: SÓLO TOMAR LOS GASTOS QUE YA ESTÁN PAGADOS ---
+            rawGastos = resGastos.body()?.data?.filter { (it.completado ?: 0) == 1 } ?: emptyList()
             spentMain = rawGastos.sumOf { it.monto_gasto }.toFloat() * exchangeRate
 
             val resIngresos = RetrofitClient.instance.getIngresos(userId)
-            rawIngresos = resIngresos.body()?.data ?: emptyList()
+            // --- FILTRO: SÓLO TOMAR LOS INGRESOS QUE YA ESTÁN RECIBIDOS ---
+            rawIngresos = resIngresos.body()?.data?.filter { (it.recibido ?: 1) == 1 } ?: emptyList()
 
             val resCatGastos = RetrofitClient.instance.getCategoriasGastos(userId)
             val listaCatGastos = resCatGastos.body()?.data ?: emptyList()
@@ -148,7 +173,6 @@ fun BudgetScreen(
         }
     }
 
-    // --- DIÁLOGOS (Guardan a la BD en MXN base) ---
     if (showEditMainDialog) {
         BudgetEditDialog("LIMITE DE GASTO GLOBAL (MXN Base)", budgetAmountInput, { showEditMainDialog = false }) { newValue ->
             val newLimit = newValue.toDoubleOrNull() ?: (mainBudgetLimit / exchangeRate).toDouble()

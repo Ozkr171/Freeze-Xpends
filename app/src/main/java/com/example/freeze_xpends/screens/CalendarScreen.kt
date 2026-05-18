@@ -36,7 +36,6 @@ import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
 
-// --- ESTRUCTURA DE DATOS PARA EL CALENDARIO ---
 data class DailyExpenseData(val transactions: Int, val totalAmount: Double)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,11 +64,14 @@ fun CalendarScreen(
 
     val moneyFormatter = NumberFormat.getCurrencyInstance(Locale("es", "MX"))
 
-    // --- ESTADOS Y LÓGICA DE NOTAS ---
     var notas by remember { mutableStateOf<List<Nota>>(emptyList()) }
+
+    // --- ESTADO PARA LAS NOTAS DEL MES ---
+    var notasDelMes by remember { mutableStateOf<List<Nota>>(emptyList()) }
+
     var textoNuevaNota by remember { mutableStateOf("") }
     var cargandoNotas by remember { mutableStateOf(false) }
-    var recargarNotas by remember { mutableStateOf(0) } // Trigger para recargar al agregar/borrar
+    var recargarNotas by remember { mutableStateOf(0) }
     var notaEnEdicion by remember { mutableStateOf<Nota?>(null) }
 
     LaunchedEffect(selectedDate, recargarNotas) {
@@ -88,7 +90,7 @@ fun CalendarScreen(
         }
     }
 
-    LaunchedEffect(currentYearMonth, refreshKey) {
+    LaunchedEffect(currentYearMonth, refreshKey, recargarNotas) {
         isLoading = true
         try {
             val responseGastos = RetrofitClient.instance.getGastos(userId)
@@ -97,46 +99,88 @@ fun CalendarScreen(
             val responseIngresos = RetrofitClient.instance.getIngresos(userId)
             val listaIngresos = responseIngresos.body()?.data ?: emptyList()
 
-            val tempTransactions = mutableListOf<TransaccionItem>()
-
-            // Procesar Gastos (Adaptado al nuevo TransaccionItem)
-            listaGastos.forEach {
-                val fechaStr = it.fecha_gasto.substringBefore("T")
-                try {
-                    val date = LocalDate.parse(fechaStr)
-                    if (YearMonth.from(date) == currentYearMonth) {
-                        val isCompleted = it.completado == 1
-                        tempTransactions.add(
-                            TransaccionItem(
-                                id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
-                                categoria = "Gasto", monto = it.monto_gasto, fecha = fechaStr,
-                                frecuencia = it.plazo ?: "ÚNICO",
-                                status = if (isCompleted) "PAGADO" else "PENDIENTE",
-                                isCompleted = isCompleted
-                            )
-                        )
-                    }
-                } catch (e: Exception) { }
+            // OBTENER NOTAS DEL MES ENTERO
+            val responseNotasMes = RetrofitClient.instance.getNotasPorMes(userId, currentYearMonth.toString())
+            if (responseNotasMes.isSuccessful) {
+                notasDelMes = responseNotasMes.body()?.data ?: emptyList()
             }
 
-            // Procesar Ingresos (Adaptado al nuevo TransaccionItem y con plazo)
-            listaIngresos.forEach {
-                val fechaStr = it.fecha_ingreso.substringBefore("T")
+            val tempTransactions = mutableListOf<TransaccionItem>()
+            val startOfMonth = currentYearMonth.atDay(1)
+            val endOfMonth = currentYearMonth.atEndOfMonth()
+
+            fun proyectarTransacciones(
+                idReal: Int, isGasto: Boolean, titulo: String, categoria: String,
+                monto: Double, fechaInicioStr: String, frecuencia: String,
+                isCompletedOriginal: Boolean, statusOriginal: String
+            ) {
                 try {
-                    val date = LocalDate.parse(fechaStr)
-                    if (YearMonth.from(date) == currentYearMonth) {
-                        val isCompleted = it.recibido == 1
-                        tempTransactions.add(
-                            TransaccionItem(
-                                id = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
-                                categoria = it.nombre_categoria ?: "Ingreso", monto = it.monto, fecha = fechaStr,
-                                frecuencia = it.plazo ?: "ÚNICO",
-                                status = if (isCompleted) "RECIBIDO" else "NO RECIBIDO",
-                                isCompleted = isCompleted
+                    val fechaInicio = LocalDate.parse(fechaInicioStr)
+                    var currentDate = fechaInicio
+                    val freq = frecuencia.uppercase()
+
+                    fun agregarSiPertenece() {
+                        if (YearMonth.from(currentDate) == currentYearMonth) {
+                            val esElOriginal = currentDate == fechaInicio
+                            tempTransactions.add(
+                                TransaccionItem(
+                                    id = idReal,
+                                    isGasto = isGasto,
+                                    titulo = titulo,
+                                    categoria = categoria,
+                                    monto = monto,
+                                    fecha = currentDate.toString(),
+                                    frecuencia = frecuencia,
+                                    status = if (esElOriginal) statusOriginal else if (isGasto) "PENDIENTE" else "NO RECIBIDO",
+                                    isCompleted = if (esElOriginal) isCompletedOriginal else false
+                                )
                             )
-                        )
+                        }
                     }
-                } catch (e: Exception) { }
+
+                    when (freq) {
+                        "ÚNICO", "UNICO" -> {
+                            if (YearMonth.from(fechaInicio) == currentYearMonth) agregarSiPertenece()
+                        }
+                        "SEMANAL" -> {
+                            while (currentDate.isBefore(startOfMonth)) currentDate = currentDate.plusDays(7)
+                            while (!currentDate.isAfter(endOfMonth)) { agregarSiPertenece(); currentDate = currentDate.plusDays(7) }
+                        }
+                        "QUINCENAL" -> {
+                            while (currentDate.isBefore(startOfMonth)) currentDate = currentDate.plusDays(14)
+                            while (!currentDate.isAfter(endOfMonth)) { agregarSiPertenece(); currentDate = currentDate.plusDays(14) }
+                        }
+                        "MENSUAL" -> {
+                            while (currentDate.isBefore(startOfMonth)) currentDate = currentDate.plusMonths(1)
+                            while (!currentDate.isAfter(endOfMonth)) { agregarSiPertenece(); currentDate = currentDate.plusMonths(1) }
+                        }
+                        "ANUAL" -> {
+                            while (currentDate.isBefore(startOfMonth)) currentDate = currentDate.plusYears(1)
+                            while (!currentDate.isAfter(endOfMonth)) { agregarSiPertenece(); currentDate = currentDate.plusYears(1) }
+                        }
+                        else -> {
+                            if (YearMonth.from(fechaInicio) == currentYearMonth) agregarSiPertenece()
+                        }
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+
+            listaGastos.forEach {
+                val isCompleted = it.completado == 1
+                proyectarTransacciones(
+                    idReal = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
+                    categoria = "Gasto", monto = it.monto_gasto, fechaInicioStr = it.fecha_gasto.substringBefore("T"),
+                    frecuencia = it.plazo ?: "ÚNICO", isCompletedOriginal = isCompleted, statusOriginal = if (isCompleted) "PAGADO" else "PENDIENTE"
+                )
+            }
+
+            listaIngresos.forEach {
+                val isCompleted = it.recibido == 1
+                proyectarTransacciones(
+                    idReal = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
+                    categoria = it.nombre_categoria ?: "Ingreso", monto = it.monto, fechaInicioStr = it.fecha_ingreso.substringBefore("T"),
+                    frecuencia = it.plazo ?: "ÚNICO", isCompletedOriginal = isCompleted, statusOriginal = if (isCompleted) "RECIBIDO" else "NO RECIBIDO"
+                )
             }
 
             allTransactionsMonth = tempTransactions.sortedByDescending { it.fecha }
@@ -227,6 +271,44 @@ fun CalendarScreen(
                     SummaryRow("Gasto Promedio/Día", moneyFormatter.format(prom), true)
                 }
             }
+
+            // --- MEJORA: LISTADO DE NOTAS DEL MES CON FECHA COMPLETA Y ORDENADAS ---
+            if (notasDelMes.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, BorderSlate)) {
+                    Column(modifier = Modifier.padding(24.dp)) {
+                        Text("NOTAS DEL MES", fontWeight = FontWeight.Black, fontSize = 14.sp, color = TextDark)
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Ordenamos las notas por fecha para que se lean como una línea del tiempo
+                        notasDelMes.sortedBy { it.fecha }.forEach { nota ->
+                            val dateObj = try { LocalDate.parse(nota.fecha.substringBefore("T")) } catch(e:Exception) { null }
+
+                            val dayNumber = dateObj?.dayOfMonth?.toString() ?: ""
+                            val dayName = dateObj?.dayOfWeek?.getDisplayName(TextStyle.SHORT, Locale("es", "MX"))?.replaceFirstChar { it.uppercase() } ?: ""
+                            val monthName = dateObj?.month?.getDisplayName(TextStyle.FULL, Locale("es", "MX"))?.replaceFirstChar { it.uppercase() } ?: ""
+
+                            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // Columna de la fecha (Día de la semana + Número en círculo)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(48.dp)) {
+                                    Text(dayName, fontSize = 10.sp, color = TextMuted, fontWeight = FontWeight.Bold)
+                                    Box(modifier = Modifier.size(36.dp).background(PrimaryBlue.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                                        Text(dayNumber, fontWeight = FontWeight.Bold, color = PrimaryBlue, fontSize = 14.sp)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
+                                // Columna del texto y la fecha descriptiva
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(nota.texto, fontSize = 14.sp, color = TextDark)
+                                    if (dateObj != null) {
+                                        Text("$dayNumber de $monthName", fontSize = 10.sp, color = TextMuted)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -270,7 +352,7 @@ fun CalendarScreen(
                                                 if (res.isSuccessful) refreshKey++
                                             }
                                         } catch (e: Exception) {
-                                            Toast.makeText(context, "Error al guardar nota: ${e.message}", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, "Error al actualizar estatus: ${e.message}", Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 },
@@ -279,7 +361,6 @@ fun CalendarScreen(
                         }
                     }
 
-                    // --- INICIO DEL PASO B: UI DE NOTAS DEL DÍA ---
                     Spacer(modifier = Modifier.height(24.dp))
                     HorizontalDivider(modifier = Modifier.padding(horizontal = 24.dp), color = BorderSlate)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -295,8 +376,6 @@ fun CalendarScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Input y Botón Agregar
-                    // Input y Botones
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -314,7 +393,6 @@ fun CalendarScreen(
                             )
                         )
 
-                        // Si está editando, mostramos un botón de "X" para cancelar
                         if (notaEnEdicion != null) {
                             Spacer(modifier = Modifier.width(4.dp))
                             IconButton(
@@ -336,7 +414,6 @@ fun CalendarScreen(
                                     scope.launch {
                                         try {
                                             if (notaEnEdicion != null) {
-                                                // --- MODO EDICIÓN ---
                                                 val req = ActualizarNota(textoNuevaNota)
                                                 val res = RetrofitClient.instance.updateNota(notaEnEdicion!!.nota_id, req)
                                                 if (res.isSuccessful) {
@@ -348,7 +425,6 @@ fun CalendarScreen(
                                                     Toast.makeText(context, "Error al editar (${res.code()})", Toast.LENGTH_LONG).show()
                                                 }
                                             } else {
-                                                // --- MODO NUEVO ---
                                                 val req = NuevaNota(userId, selectedDate.toString(), textoNuevaNota)
                                                 val res = RetrofitClient.instance.addNota(req)
                                                 if (res.isSuccessful) {
@@ -373,7 +449,6 @@ fun CalendarScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Lista de notas guardadas
                     if (cargandoNotas) {
                         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp), color = PrimaryBlue)
@@ -392,7 +467,6 @@ fun CalendarScreen(
                                         Text(nota.texto, fontSize = 14.sp, color = TextDark)
                                     }
                                     Row {
-                                        // BOTÓN EDITAR
                                         IconButton(
                                             onClick = {
                                                 notaEnEdicion = nota
@@ -402,7 +476,6 @@ fun CalendarScreen(
                                         ) {
                                             Icon(Icons.Default.Edit, contentDescription = "Editar", tint = TextMuted, modifier = Modifier.size(18.dp))
                                         }
-                                        // BOTÓN BORRAR
                                         IconButton(
                                             onClick = {
                                                 scope.launch {
@@ -421,7 +494,6 @@ fun CalendarScreen(
                             }
                         }
                     }
-                    // --- FIN DEL PASO B ---
                 }
             } else {
                 EditTransactionContent(

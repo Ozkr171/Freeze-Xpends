@@ -83,7 +83,8 @@ data class UserData(
     val correo_electronico: String?,
     val premium: Int,
     val divisa: String?,
-    val foto_perfil: String?
+    val foto_perfil: String?,
+    val formato_num: String?
 )
 data class Ingreso(
     val ingreso_id: Int,
@@ -104,7 +105,14 @@ data class UpdatePerfilRequest(
     val correo_electronico: String,
     val contrasena: String? = null,
     val divisa: String,
-    val foto_perfil: String?
+    val foto_perfil: String?,
+    val formato_num: String? = "US"
+)
+
+data class RecordatorioRequest(
+    val user_id: Int,
+    val fecha_y_hora: String,
+    val titulo_r: String
 )
 
 
@@ -202,4 +210,10 @@ interface ApiService {
 
     @DELETE("api/usuarios/{user_id}")
     suspend fun deleteUsuario(@Path("user_id") userId: Int): Response<ApiResponse<Any>>
+
+    @GET("api/notas/{user_id}/mes/{anio_mes}")
+    suspend fun getNotasPorMes(@Path("user_id") userId: Int, @Path("anio_mes") anioMes: String): Response<ApiResponse<List<Nota>>>
+
+    @POST("api/recordatorios")
+    suspend fun addRecordatorio(@Body request: RecordatorioRequest): Response<ApiResponse<Any>>
 }

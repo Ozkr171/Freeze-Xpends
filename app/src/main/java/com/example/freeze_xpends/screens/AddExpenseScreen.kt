@@ -1,7 +1,9 @@
 package com.example.freeze_xpends.screens
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -31,6 +33,7 @@ import coil.compose.AsyncImage
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.GastoRequest
 import com.example.freeze_xpends.network.IngresoRequest
+import com.example.freeze_xpends.network.RecordatorioRequest
 import com.example.freeze_xpends.network.Categoria
 import com.example.freeze_xpends.theme.*
 import com.example.freeze_xpends.viewmodels.UserViewModel
@@ -76,7 +79,16 @@ fun AddExpenseScreen(
     var reminderDate by rememberSaveable { mutableStateOf("") }
     var reminderTime by rememberSaveable { mutableStateOf("") }
 
-    // --- MAGIA DEL SELECTOR DE FOTOS ---
+    // --- PERMISO DE NOTIFICACIONES PARA ANDROID 13+ ---
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Se requiere permiso para las notificaciones", Toast.LENGTH_SHORT).show()
+            isReminderActive = false
+        }
+    }
+
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -84,38 +96,40 @@ fun AddExpenseScreen(
     ) { uri ->
         if (uri != null) {
             try {
-                // Esto le dice a Android: "Guárdame permiso para ver esta foto para siempre"
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 selectedImageUri = uri
             } catch (e: Exception) {
                 e.printStackTrace()
-                selectedImageUri = uri // Si falla lo persistente, al menos la mostramos ahorita
+                selectedImageUri = uri
             }
         }
     }
 
-    // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
     val calendar = Calendar.getInstance()
     val datePickerDialog = android.app.DatePickerDialog(
         context,
-        { _, year, month, dayOfMonth ->
-            date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
+        { _, year, month, dayOfMonth -> date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth) },
+        calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val reminderCalendar = Calendar.getInstance()
+    val reminderDatePickerDialog = android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth -> reminderDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth) },
+        reminderCalendar.get(Calendar.YEAR), reminderCalendar.get(Calendar.MONTH), reminderCalendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val reminderTimePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, hourOfDay, minute -> reminderTime = String.format("%02d:%02d", hourOfDay, minute) },
+        reminderCalendar.get(Calendar.HOUR_OF_DAY), reminderCalendar.get(Calendar.MINUTE), true
     )
 
     LaunchedEffect(isExpense) {
         try {
-            val response = if (isExpense) {
-                RetrofitClient.instance.getCategoriasGastos(userId)
-            } else {
-                RetrofitClient.instance.getCategoriasIngresos(userId)
-            }
+            val response = if (isExpense) RetrofitClient.instance.getCategoriasGastos(userId)
+            else RetrofitClient.instance.getCategoriasIngresos(userId)
+
             if (response.isSuccessful) {
                 categories = response.body()?.data ?: emptyList()
                 selectedCategory = categories.firstOrNull()
@@ -152,35 +166,29 @@ fun AddExpenseScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- FOTO DEL RECIBO (ACTUALIZADO) ---
             SectionHeader("ICONO / FOTO DEL RECIBO", Icons.Default.Image, isLocked = !isPremium)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp) // Un poco más alto para ver la foto chido
+                    .height(140.dp)
                     .background(Color.White, RoundedCornerShape(12.dp))
                     .border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
                     .clip(RoundedCornerShape(12.dp))
                     .clickable {
                         if (isPremium) {
-                            // Si es premium, abre su galería de fotos
                             photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        } else {
-                            onNavigateToPremium()
-                        }
+                        } else onNavigateToPremium()
                     },
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedImageUri != null) {
-                    // Si ya seleccionó una foto, la pintamos con Coil
                     AsyncImage(
                         model = selectedImageUri,
                         contentDescription = "Foto seleccionada",
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop // Corta los bordes para rellenar el cuadro
+                        contentScale = ContentScale.Crop
                     )
                 } else {
-                    // Si no hay foto, mostramos el botón
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
                         Spacer(modifier = Modifier.height(8.dp))
@@ -221,27 +229,20 @@ fun AddExpenseScreen(
                 OutlinedTextField(
                     value = date,
                     onValueChange = {},
-                    readOnly = true, // Bloquea escritura manual
-                    enabled = false, // Lo hace solo clickeable desde la Box
+                    readOnly = true,
+                    enabled = false,
                     modifier = Modifier.fillMaxWidth(),
                     trailingIcon = { Icon(Icons.Default.DateRange, null, tint = primaryColor) },
                     textStyle = LocalTextStyle.current.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark),
                     shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = TextDark,
-                        disabledBorderColor = BorderSlate,
-                        disabledTrailingIconColor = primaryColor
-                    )
+                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate, disabledTrailingIconColor = primaryColor)
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             SectionHeader("CATEGORÍA", Icons.Default.Category)
-            ExposedDropdownMenuBox(
-                expanded = expandedCat,
-                onExpandedChange = { expandedCat = !expandedCat }
-            ) {
+            ExposedDropdownMenuBox(expanded = expandedCat, onExpandedChange = { expandedCat = !expandedCat }) {
                 OutlinedTextField(
                     value = selectedCategory?.nombre_categoria ?: "Seleccionar...",
                     onValueChange = {},
@@ -255,10 +256,7 @@ fun AddExpenseScreen(
                     categories.forEach { cat ->
                         DropdownMenuItem(
                             text = { Text(cat.nombre_categoria) },
-                            onClick = {
-                                selectedCategory = cat
-                                expandedCat = false
-                            }
+                            onClick = { selectedCategory = cat; expandedCat = false }
                         )
                     }
                 }
@@ -291,7 +289,14 @@ fun AddExpenseScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    if (!isPremium) onNavigateToPremium() else isReminderActive = !isReminderActive
+                    if (!isPremium) onNavigateToPremium()
+                    else {
+                        isReminderActive = !isReminderActive
+                        // Pedir permiso si se activa y es Android 13+
+                        if (isReminderActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                 },
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, if (isReminderActive) PrimaryBlue else BorderSlate),
@@ -312,8 +317,20 @@ fun AddExpenseScreen(
                     if (isReminderActive && isPremium) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            OutlinedTextField(value = reminderDate, onValueChange = { reminderDate = it }, placeholder = { Text("dd/mm/aaaa") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it }, placeholder = { Text("--:--") }, modifier = Modifier.weight(1f))
+                            Box(modifier = Modifier.weight(1f).clickable { reminderDatePickerDialog.show() }) {
+                                OutlinedTextField(
+                                    value = reminderDate, onValueChange = {}, readOnly = true, enabled = false,
+                                    placeholder = { Text("Fecha", fontSize = 12.sp) }, modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate)
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f).clickable { reminderTimePickerDialog.show() }) {
+                                OutlinedTextField(
+                                    value = reminderTime, onValueChange = {}, readOnly = true, enabled = false,
+                                    placeholder = { Text("Hora", fontSize = 12.sp) }, modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate)
+                                )
+                            }
                         }
                     }
                 }
@@ -328,34 +345,42 @@ fun AddExpenseScreen(
                             isLoading = true
                             try {
                                 val montoDouble = amount.toDoubleOrNull() ?: 0.0
-
                                 val isUnico = selectedFrequency == "Pago Único"
                                 val plazoEnviar = if (isUnico) "ÚNICO" else selectedFrequency
                                 val estatusInicial = if (isUnico) 1 else 0
-
-                                // ¡Aquí mandamos el Link de la foto a Aiven! (Si es que hay una)
                                 val imagenString = selectedImageUri?.toString()
 
                                 val response = if (isExpense) {
                                     RetrofitClient.instance.addGasto(
-                                        GastoRequest(
-                                            user_id = userId, categoria_id = selectedCategory!!.categoria_id,
-                                            fecha_gasto = date, nombre_gasto = concept, descripcion = null,
-                                            plazo = plazoEnviar, monto_gasto = montoDouble, imagen_uri = imagenString
-                                        )
+                                        GastoRequest(user_id = userId, categoria_id = selectedCategory!!.categoria_id, fecha_gasto = date, nombre_gasto = concept, descripcion = null, plazo = plazoEnviar, monto_gasto = montoDouble, imagen_uri = imagenString)
                                     )
                                 } else {
                                     RetrofitClient.instance.addIngreso(
-                                        IngresoRequest(
-                                            user_id = userId, categoria_id = selectedCategory!!.categoria_id,
-                                            fecha_ingreso = date, nombre_ingreso = concept, descripcion = null,
-                                            monto = montoDouble, recibido = estatusInicial,
-                                            plazo = plazoEnviar, imagen_uri = imagenString
-                                        )
+                                        IngresoRequest(user_id = userId, categoria_id = selectedCategory!!.categoria_id, fecha_ingreso = date, nombre_ingreso = concept, descripcion = null, monto = montoDouble, recibido = estatusInicial, plazo = plazoEnviar, imagen_uri = imagenString)
                                     )
                                 }
 
                                 if (response.isSuccessful) {
+                                    if (isReminderActive && isPremium && reminderDate.isNotBlank() && reminderTime.isNotBlank()) {
+                                        val fechaYHora = "${reminderDate} ${reminderTime}:00"
+                                        RetrofitClient.instance.addRecordatorio(RecordatorioRequest(userId, fechaYHora, concept))
+
+                                        // --- MAGIA: PROGRAMAR ALARMA LOCAL ---
+                                        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                                        try {
+                                            val dateObj = sdf.parse(fechaYHora)
+                                            if (dateObj != null) {
+                                                com.example.freeze_xpends.utils.scheduleNotification(
+                                                    context = context,
+                                                    timeInMillis = dateObj.time,
+                                                    title = "¡Recordatorio: $concept!",
+                                                    message = "Tienes este movimiento programado para hoy.",
+                                                    notificationId = (1..100000).random()
+                                                )
+                                            }
+                                        } catch (e: Exception) { e.printStackTrace() }
+                                    }
+
                                     Toast.makeText(context, "¡Transacción guardada!", Toast.LENGTH_SHORT).show()
                                     onNavigateBack()
                                 } else {

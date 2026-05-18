@@ -1,6 +1,7 @@
 package com.example.freeze_xpends.screens
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,7 +46,8 @@ data class TransaccionItem(
     val frecuencia: String,
     val status: String,
     val isCompleted: Boolean,
-    val imagen_uri: String? = null
+    val imagen_uri: String? = null,
+    val isClone: Boolean = false
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,9 +56,10 @@ fun HomeScreen(
     isPremium: Boolean,
     userName: String,
     userId: Int,
-    userViewModel: UserViewModel, // <-- PASADO PARA ESCUCHAR LA DIVISA
+    userViewModel: UserViewModel,
     onNavigate: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -64,23 +68,24 @@ fun HomeScreen(
     var selectedTransaccion by remember { mutableStateOf<TransaccionItem?>(null) }
     var refreshKey by remember { mutableStateOf(0) }
 
+    // --- ESTADO PARA MOSTRAR/OCULTAR FUTUROS ---
+    var showUpcoming by remember { mutableStateOf(false) }
+
     var transacciones by remember { mutableStateOf<List<TransaccionItem>>(emptyList()) }
     var totalIngresos by remember { mutableStateOf(0.0) }
     var totalGastos by remember { mutableStateOf(0.0) }
     var balanceTotal by remember { mutableStateOf(0.0) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // --- ESCUCHAR LA DIVISA PREFERIDA DEL USUARIO ---
     val currentCurrency by userViewModel.userCurrency.collectAsState()
+    val userFormat by userViewModel.userFormat.collectAsState()
 
-    // MOTOR DE CONVERSIÓN (Base: MXN)
     val exchangeRate = when (currentCurrency) {
-        "USD" -> 0.05  // 1 MXN = 0.05 USD
-        "EUR" -> 0.045 // 1 MXN = 0.045 EUR
-        else -> 1.0    // MXN se queda igual
+        "USD" -> 0.05
+        "EUR" -> 0.045
+        else -> 1.0
     }
 
-    // Configurar formateador dinámico de moneda
     val moneyFormatter = when (currentCurrency) {
         "USD" -> NumberFormat.getCurrencyInstance(Locale.US)
         "EUR" -> NumberFormat.getCurrencyInstance(Locale.FRANCE)
@@ -94,7 +99,6 @@ fun HomeScreen(
         else -> "Buenas noches"
     }
 
-    // --- SINCRONIZACIÓN SILENCIOSA CON LA NUBE AL ABRIR LA APP ---
     LaunchedEffect(Unit) {
         try {
             val response = RetrofitClient.instance.getPerfil(userId)
@@ -109,7 +113,7 @@ fun HomeScreen(
                     photo = data?.foto_perfil
                 )
             }
-        } catch (e: Exception) { /* Falla silenciosa si no hay internet */ }
+        } catch (e: Exception) { }
     }
 
     LaunchedEffect(refreshKey, currentCurrency) {
@@ -121,40 +125,93 @@ fun HomeScreen(
             val responseIngresos = RetrofitClient.instance.getIngresos(userId)
             val listaIngresos = responseIngresos.body()?.data ?: emptyList()
 
-            // Aplicamos la conversión matemática a los totales
-            totalGastos = listaGastos.sumOf { it.monto_gasto } * exchangeRate
-            totalIngresos = listaIngresos.sumOf { it.monto } * exchangeRate
+            // --- BALANCE REAL (SÓLO LO PAGADO/RECIBIDO) ---
+            totalGastos = listaGastos.filter { (it.completado ?: 0) == 1 }.sumOf { it.monto_gasto } * exchangeRate
+            totalIngresos = listaIngresos.filter { (it.recibido ?: 1) == 1 }.sumOf { it.monto } * exchangeRate
             balanceTotal = totalIngresos - totalGastos
 
-            val itemsGastos = listaGastos.map {
+            val tempTransactions = mutableListOf<TransaccionItem>()
+            val today = LocalDate.now()
+            val limitDate = today.plusDays(30)
+
+            fun proyectarTransacciones(
+                idReal: Int, isGasto: Boolean, titulo: String, categoria: String,
+                monto: Double, fechaInicioStr: String, frecuencia: String,
+                isCompletedOriginal: Boolean, statusOriginal: String, imagenUri: String?
+            ) {
+                try {
+                    val fechaInicio = LocalDate.parse(fechaInicioStr)
+                    var currentDate = fechaInicio
+                    val freq = frecuencia.uppercase()
+
+                    fun agregar() {
+                        val esElOriginal = currentDate == fechaInicio
+                        val statusClone = if (esElOriginal) statusOriginal else if (isGasto) "PENDIENTE" else "NO RECIBIDO"
+                        val completedClone = if (esElOriginal) isCompletedOriginal else false
+
+                        val tituloMostrar = if (esElOriginal) titulo else "$titulo (Auto)"
+
+                        tempTransactions.add(
+                            TransaccionItem(
+                                id = idReal,
+                                isGasto = isGasto,
+                                titulo = tituloMostrar,
+                                categoria = categoria,
+                                monto = monto * exchangeRate,
+                                fecha = currentDate.toString(),
+                                frecuencia = frecuencia,
+                                status = statusClone,
+                                isCompleted = completedClone,
+                                imagen_uri = imagenUri,
+                                isClone = !esElOriginal
+                            )
+                        )
+                    }
+
+                    when (freq) {
+                        "ÚNICO", "UNICO" -> agregar()
+                        "SEMANAL" -> {
+                            while (!currentDate.isAfter(limitDate)) { agregar(); currentDate = currentDate.plusDays(7) }
+                        }
+                        "QUINCENAL" -> {
+                            while (!currentDate.isAfter(limitDate)) { agregar(); currentDate = currentDate.plusDays(14) }
+                        }
+                        "MENSUAL" -> {
+                            while (!currentDate.isAfter(limitDate)) { agregar(); currentDate = currentDate.plusMonths(1) }
+                        }
+                        "ANUAL" -> {
+                            while (!currentDate.isAfter(limitDate)) { agregar(); currentDate = currentDate.plusYears(1) }
+                        }
+                        else -> agregar()
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+
+            listaGastos.forEach {
                 val isCompleted = (it.completado ?: 0) == 1
-                TransaccionItem(
-                    id = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
-                    categoria = "Gasto",
-                    monto = it.monto_gasto * exchangeRate,
-                    fecha = it.fecha_gasto.substringBefore("T"),
-                    frecuencia = it.plazo ?: "ÚNICO",
-                    status = if(isCompleted) "PAGADO" else "PENDIENTE",
-                    isCompleted = isCompleted,
-                    imagen_uri = it.imagen_uri
+                proyectarTransacciones(
+                    idReal = it.gasto_id, isGasto = true, titulo = it.nombre_gasto,
+                    categoria = "Gasto", monto = it.monto_gasto,
+                    fechaInicioStr = it.fecha_gasto.substringBefore("T"),
+                    frecuencia = it.plazo ?: "ÚNICO", isCompletedOriginal = isCompleted,
+                    statusOriginal = if(isCompleted) "PAGADO" else "PENDIENTE",
+                    imagenUri = it.imagen_uri
                 )
             }
 
-            val itemsIngresos = listaIngresos.map {
+            listaIngresos.forEach {
                 val isCompleted = (it.recibido ?: 1) == 1
-                TransaccionItem(
-                    id = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
-                    categoria = it.nombre_categoria ?: "Ingreso",
-                    monto = it.monto * exchangeRate,
-                    fecha = it.fecha_ingreso.substringBefore("T"),
-                    frecuencia = it.plazo ?: "ÚNICO",
-                    status = if(isCompleted) "RECIBIDO" else "PENDIENTE",
-                    isCompleted = isCompleted,
-                    imagen_uri = it.imagen_uri
+                proyectarTransacciones(
+                    idReal = it.ingreso_id, isGasto = false, titulo = it.nombre_ingreso,
+                    categoria = it.nombre_categoria ?: "Ingreso", monto = it.monto,
+                    fechaInicioStr = it.fecha_ingreso.substringBefore("T"),
+                    frecuencia = it.plazo ?: "ÚNICO", isCompletedOriginal = isCompleted,
+                    statusOriginal = if(isCompleted) "RECIBIDO" else "PENDIENTE",
+                    imagenUri = it.imagen_uri
                 )
             }
 
-            transacciones = (itemsGastos + itemsIngresos).sortedByDescending { it.fecha }
+            transacciones = tempTransactions.sortedByDescending { it.fecha }
 
         } catch (e: Exception) {
             println("Error al cargar datos: ${e.message}")
@@ -194,7 +251,7 @@ fun HomeScreen(
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column {
-                                Text("BALANCE TOTAL", color = Color.White.copy(0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("BALANCE DISPONIBLE", color = Color.White.copy(0.8f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 Text(moneyFormatter.format(balanceTotal), color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Black)
                             }
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -208,8 +265,8 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(24.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            SummaryCard("Ingresos", moneyFormatter.format(totalIngresos), Icons.Default.TrendingUp, modifier = Modifier.weight(1f))
-                            SummaryCard("Gastos", moneyFormatter.format(totalGastos), Icons.Default.TrendingDown, modifier = Modifier.weight(1f))
+                            SummaryCard("Ingresos Netos", moneyFormatter.format(totalIngresos), Icons.Default.TrendingUp, modifier = Modifier.weight(1f))
+                            SummaryCard("Gastos Pagados", moneyFormatter.format(totalGastos), Icons.Default.TrendingDown, modifier = Modifier.weight(1f))
                         }
                     }
                 }
@@ -250,19 +307,41 @@ fun HomeScreen(
                     }
                 }
             } else {
-                val groupedTransactions = transacciones.groupBy { it.fecha }
+                val todayDate = LocalDate.now()
+
+                // --- FILTRO: SI showUpcoming ES FALSO, NO MOSTRAR EL FUTURO ---
+                val filteredTransactions = if (showUpcoming) transacciones else transacciones.filter {
+                    try {
+                        val d = LocalDate.parse(it.fecha)
+                        !d.isAfter(todayDate)
+                    } catch(e: Exception) { true }
+                }
+
+                item {
+                    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { showUpcoming = !showUpcoming }) {
+                            Text(if (showUpcoming) "Ocultar próximos" else "Ver próximos", color = PrimaryBlue, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                val groupedTransactions = filteredTransactions.groupBy { it.fecha }
 
                 groupedTransactions.forEach { (dateStr, txList) ->
                     item {
                         val dateObj = try { LocalDate.parse(dateStr) } catch(e: Exception) { null }
-                        val today = LocalDate.now()
-                        val headerText = if (dateObj == today) "Hoy" else dateStr
+                        val headerText = when {
+                            dateObj == todayDate -> "Hoy"
+                            dateObj == todayDate.plusDays(1) -> "Mañana"
+                            dateObj == todayDate.minusDays(1) -> "Ayer"
+                            else -> dateStr
+                        }
 
                         Text(
-                            text = "Transacciones de $headerText",
+                            text = if (dateObj != null && dateObj.isAfter(todayDate)) "Próximamente: $headerText" else "Transacciones de $headerText",
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = TextMuted,
+                            color = if (dateObj != null && dateObj.isAfter(todayDate)) PrimaryBlue else TextMuted,
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)
                         )
                     }
@@ -277,28 +356,35 @@ fun HomeScreen(
                             title = t.titulo, category = t.categoria, freq = t.frecuencia, amount = moneyText,
                             date = t.fecha, icon = iconImage, iconColor = iconColor,
                             status = t.status, isCompleted = t.isCompleted,
-                            imagenUri = t.imagen_uri, // <--- PASAMOS LA URI AQUÍ
+                            imagenUri = t.imagen_uri,
                             onToggleClick = {
-                                scope.launch {
-                                    try {
-                                        val nuevoEstado = if (t.isCompleted) 0 else 1
-                                        if (t.isGasto) {
-                                            // Al actualizar estatus mandamos el ID real, el backend no cambia
-                                            val res = RetrofitClient.instance.updateEstatusGasto(t.id, EstatusGastoRequest(nuevoEstado))
-                                            if (res.isSuccessful) refreshKey++
-                                        } else {
-                                            val res = RetrofitClient.instance.updateEstatusIngreso(t.id, EstatusIngresoRequest(nuevoEstado))
-                                            if (res.isSuccessful) refreshKey++
+                                if (t.isClone) {
+                                    Toast.makeText(context, "Esta es una proyección futura. Edita la transacción original para cambiar su estado.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    scope.launch {
+                                        try {
+                                            val nuevoEstado = if (t.isCompleted) 0 else 1
+                                            if (t.isGasto) {
+                                                val res = RetrofitClient.instance.updateEstatusGasto(t.id, EstatusGastoRequest(nuevoEstado))
+                                                if (res.isSuccessful) refreshKey++
+                                            } else {
+                                                val res = RetrofitClient.instance.updateEstatusIngreso(t.id, EstatusIngresoRequest(nuevoEstado))
+                                                if (res.isSuccessful) refreshKey++
+                                            }
+                                        } catch(e: Exception) {
+                                            println("Error actualizando estatus: ${e.message}")
                                         }
-                                    } catch(e: Exception) {
-                                        println("Error actualizando estatus: ${e.message}")
                                     }
                                 }
                             },
                             onEditClick = {
-                                selectedTransaccion = t
-                                transactionTypeExpense = t.isGasto
-                                showBottomSheet = true
+                                if (t.isClone) {
+                                    Toast.makeText(context, "Estás viendo un pago programado. Busca la fecha original para editarlo.", Toast.LENGTH_LONG).show()
+                                } else {
+                                    selectedTransaccion = t
+                                    transactionTypeExpense = t.isGasto
+                                    showBottomSheet = true
+                                }
                             }
                         )
                     }
@@ -340,7 +426,7 @@ fun TransactionCard(
     title: String, category: String, freq: String, amount: String, date: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector, iconColor: Color,
     status: String, isCompleted: Boolean,
-    imagenUri: String? = null, // <--- NUEVO PARÁMETRO
+    imagenUri: String? = null,
     onToggleClick: () -> Unit, onEditClick: () -> Unit
 ) {
     Card(
@@ -351,7 +437,6 @@ fun TransactionCard(
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
 
-            // --- BOX ACTUALIZADO PARA MOSTRAR LA FOTO ---
             Box(
                 modifier = Modifier
                     .size(48.dp)

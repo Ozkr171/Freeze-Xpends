@@ -2,6 +2,7 @@ package com.example.freeze_xpends.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -20,8 +21,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.freeze_xpends.network.RetrofitClient
+import com.example.freeze_xpends.network.UpdatePerfilRequest
 import com.example.freeze_xpends.theme.*
 import com.example.freeze_xpends.viewmodels.UserViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,18 +36,20 @@ fun SettingsScreen(
     onLogout: () -> Unit,
     onDeleteAccount: () -> Unit
 ) {
-    // RECOLECTAMOS LOS ESTADOS REALES DESDE EL VIEWMODEL
+    val userId by userViewModel.userId.collectAsState()
     val userName by userViewModel.userName.collectAsState()
     val userEmail by userViewModel.userEmail.collectAsState()
-    val isPremium by userViewModel.isPremium.collectAsState()
+    val userCurrency by userViewModel.userCurrency.collectAsState()
+    val userFormat by userViewModel.userFormat.collectAsState()
     val userPhoto by userViewModel.userPhoto.collectAsState()
 
-    // Contexto para abrir links y Estado para el diálogo de autodestrucción
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showFormatDialog by remember { mutableStateOf(false) } // <-- NUEVO ESTADO PARA EL MODAL
 
     Column(modifier = Modifier.fillMaxSize().background(BackgroundSlate)) {
-        // --- HEADER ---
         Box(modifier = Modifier.fillMaxWidth().height(64.dp).background(PrimaryBlue), contentAlignment = Alignment.CenterStart) {
             IconButton(onClick = onNavigateBack) { Icon(Icons.Default.ArrowBack, null, tint = Color.White) }
             Text("Ajustes", modifier = Modifier.padding(start = 48.dp), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
@@ -51,12 +57,11 @@ fun SettingsScreen(
 
         Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 
-            // --- CÍRCULO DE FOTO DE PERFIL DINÁMICO ---
             Box(modifier = Modifier.size(100.dp).background(PrimaryBlue, CircleShape), contentAlignment = Alignment.Center) {
                 if (!userPhoto.isNullOrBlank()) {
                     AsyncImage(
                         model = Uri.parse(userPhoto),
-                        contentDescription = "Foto de perfil en Ajustes",
+                        contentDescription = "Foto de perfil",
                         modifier = Modifier.fillMaxSize().clip(CircleShape),
                         contentScale = ContentScale.Crop
                     )
@@ -71,7 +76,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // --- OPCIONES DE CONFIGURACIÓN ---
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color.White), shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, BorderSlate)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     SettingsItem("Mi Perfil", Icons.Default.Person) { onNavigate("profile") }
@@ -81,14 +85,12 @@ fun SettingsScreen(
                     SettingsItem("Calendario", Icons.Default.CalendarMonth) { onNavigate("calendar") }
                     HorizontalDivider(color = BorderSlate.copy(0.5f))
 
-                    // --- RECUPERADOS PARA LA FASE D ---
-                    SettingsItem("Formato de Visualización", Icons.Default.Numbers) { /* TODO: Formato de números */ }
-                    HorizontalDivider(color = BorderSlate.copy(0.5f))
+                    // --- DISPARADOR DEL MODAL DE FORMATO ---
+                    SettingsItem("Formato de Visualización", Icons.Default.Numbers) { showFormatDialog = true }
 
+                    HorizontalDivider(color = BorderSlate.copy(0.5f))
                     SettingsItem("Soporte Técnico", Icons.Default.HeadsetMic) { onNavigate("support") }
                     HorizontalDivider(color = BorderSlate.copy(0.5f))
-
-                    // --- TÉRMINOS Y CONDICIONES (Mata el Ítem 3) ---
                     SettingsItem("Términos y Condiciones", Icons.Default.Description) {
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://drive.google.com/file/d/1Hy4fjBffp3oGvueWhvSTiqWRjDd7VhjB/view?usp=sharing"))
                         context.startActivity(intent)
@@ -98,7 +100,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // --- BOTÓN ELIMINAR CUENTA (Dispara el Modal) ---
             Button(
                 onClick = { showDeleteDialog = true },
                 modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -112,7 +113,6 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // --- BOTÓN CERRAR SESIÓN ---
             Button(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -124,43 +124,83 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Cerrar Sesión", color = SecondaryRed, fontWeight = FontWeight.Bold)
             }
-
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 
-    // --- MODAL DE CONFIRMACIÓN DE AUTODESTRUCCIÓN ---
-    if (showDeleteDialog) {
+    // --- MODAL: FORMATO DE VISUALIZACIÓN ---
+    if (showFormatDialog) {
         AlertDialog(
-            onDismissRequest = { showDeleteDialog = false },
-            title = {
-                Text("¿Eliminar Cuenta?", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark)
-            },
+            onDismissRequest = { showFormatDialog = false },
+            title = { Text("Formato Numérico", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark) },
             text = {
-                Text(
-                    "Esta acción borrará permanentemente todos tus gastos, ingresos, presupuestos y tu usuario. No se puede deshacer.",
-                    color = TextMuted,
-                    fontSize = 14.sp
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteDialog = false
-                        onDeleteAccount() // Aquí explota todo 💥
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryRed)
-                ) {
-                    Text("Sí, Eliminar", color = Color.White, fontWeight = FontWeight.Bold)
+                Column {
+                    Text("Elige cómo quieres ver tus números:", color = TextMuted, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Opción US
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (userFormat == "US") PrimaryBlue.copy(0.1f) else Color.Transparent).clickable {
+                            scope.launch {
+                                try {
+                                    val req = UpdatePerfilRequest(nombre_s = userName, correo_electronico = userEmail, divisa = userCurrency, foto_perfil = userPhoto, formato_num = "US")
+                                    val res = RetrofitClient.instance.updatePerfil(userId, req)
+                                    if (res.isSuccessful) {
+                                        userViewModel.setUserData(userId, userName, userEmail, userViewModel.isPremium.value, userCurrency, userPhoto, "US")
+                                        Toast.makeText(context, "Formato actualizado", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) { Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show() }
+                                showFormatDialog = false
+                            }
+                        }.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = userFormat == "US", onClick = null, colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Estilo US/MX (1,000.00)", color = TextDark, fontWeight = FontWeight.Medium)
+                    }
+
+                    // Opción EU
+                    Row(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(if (userFormat == "EU") PrimaryBlue.copy(0.1f) else Color.Transparent).clickable {
+                            scope.launch {
+                                try {
+                                    val req = UpdatePerfilRequest(nombre_s = userName, correo_electronico = userEmail, divisa = userCurrency, foto_perfil = userPhoto, formato_num = "EU")
+                                    val res = RetrofitClient.instance.updatePerfil(userId, req)
+                                    if (res.isSuccessful) {
+                                        userViewModel.setUserData(userId, userName, userEmail, userViewModel.isPremium.value, userCurrency, userPhoto, "EU")
+                                        Toast.makeText(context, "Formato actualizado", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) { Toast.makeText(context, "Error al guardar", Toast.LENGTH_SHORT).show() }
+                                showFormatDialog = false
+                            }
+                        }.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = userFormat == "EU", onClick = null, colors = RadioButtonDefaults.colors(selectedColor = PrimaryBlue))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Estilo Europa (1.000,00)", color = TextDark, fontWeight = FontWeight.Medium)
+                    }
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) {
-                    Text("Cancelar", color = TextMuted, fontWeight = FontWeight.Bold)
+            confirmButton = {
+                TextButton(onClick = { showFormatDialog = false }) {
+                    Text("Cerrar", color = PrimaryBlue, fontWeight = FontWeight.Bold)
                 }
             },
             containerColor = Color.White,
             shape = RoundedCornerShape(16.dp)
+        )
+    }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("¿Eliminar Cuenta?", fontWeight = FontWeight.Black, fontSize = 18.sp, color = TextDark) },
+            text = { Text("Esta acción borrará permanentemente todos tus gastos, ingresos, presupuestos y tu usuario. No se puede deshacer.", color = TextMuted, fontSize = 14.sp) },
+            confirmButton = { Button(onClick = { showDeleteDialog = false; onDeleteAccount() }, colors = ButtonDefaults.buttonColors(containerColor = SecondaryRed)) { Text("Sí, Eliminar", color = Color.White, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("Cancelar", color = TextMuted, fontWeight = FontWeight.Bold) } },
+            containerColor = Color.White, shape = RoundedCornerShape(16.dp)
         )
     }
 }

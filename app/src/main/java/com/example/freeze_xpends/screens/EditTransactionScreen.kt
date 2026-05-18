@@ -1,7 +1,9 @@
 package com.example.freeze_xpends.screens
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -31,6 +33,9 @@ import coil.compose.AsyncImage
 import com.example.freeze_xpends.network.RetrofitClient
 import com.example.freeze_xpends.network.GastoRequest
 import com.example.freeze_xpends.network.IngresoRequest
+import com.example.freeze_xpends.network.EstatusGastoRequest
+import com.example.freeze_xpends.network.EstatusIngresoRequest
+import com.example.freeze_xpends.network.RecordatorioRequest
 import com.example.freeze_xpends.network.Categoria
 import com.example.freeze_xpends.theme.*
 import kotlinx.coroutines.launch
@@ -73,17 +78,25 @@ fun EditTransactionContent(
     var reminderDate by remember { mutableStateOf("") }
     var reminderTime by remember { mutableStateOf("") }
 
-    // --- MAGIA DEL SELECTOR DE FOTOS (CON FIX PARA PERMISOS CADUCADOS) ---
+    // --- PERMISO DE NOTIFICACIONES PARA ANDROID 13+ ---
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Se requiere permiso para las notificaciones", Toast.LENGTH_SHORT).show()
+            isReminderActive = false
+        }
+    }
+
     var selectedImageUri by remember {
         mutableStateOf(
             if (!transaccion?.imagen_uri.isNullOrBlank()) {
                 try {
                     val uri = Uri.parse(transaccion?.imagen_uri)
-                    // Verificar que el permiso de Android aún existe intentando leerlo
                     context.contentResolver.query(uri, null, null, null, null)?.close()
                     uri
                 } catch (e: Exception) {
-                    null // Si el permiso expiró o fue revocado, lo mandamos a null para no crashear
+                    null
                 }
             } else {
                 null
@@ -96,11 +109,7 @@ fun EditTransactionContent(
     ) { uri ->
         if (uri != null) {
             try {
-                // Guarda el permiso de forma persistente
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 selectedImageUri = uri
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -109,25 +118,31 @@ fun EditTransactionContent(
         }
     }
 
-    // --- CONFIGURACIÓN DEL CALENDARIO NATIVO ---
     val calendar = Calendar.getInstance()
     val datePickerDialog = android.app.DatePickerDialog(
         context,
-        { _, year, month, dayOfMonth ->
-            date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth)
-        },
-        calendar.get(Calendar.YEAR),
-        calendar.get(Calendar.MONTH),
-        calendar.get(Calendar.DAY_OF_MONTH)
+        { _, year, month, dayOfMonth -> date = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth) },
+        calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val reminderCalendar = Calendar.getInstance()
+    val reminderDatePickerDialog = android.app.DatePickerDialog(
+        context,
+        { _, year, month, dayOfMonth -> reminderDate = String.format("%04d-%02d-%02d", year, month + 1, dayOfMonth) },
+        reminderCalendar.get(Calendar.YEAR), reminderCalendar.get(Calendar.MONTH), reminderCalendar.get(Calendar.DAY_OF_MONTH)
+    )
+
+    val reminderTimePickerDialog = android.app.TimePickerDialog(
+        context,
+        { _, hourOfDay, minute -> reminderTime = String.format("%02d:%02d", hourOfDay, minute) },
+        reminderCalendar.get(Calendar.HOUR_OF_DAY), reminderCalendar.get(Calendar.MINUTE), true
     )
 
     LaunchedEffect(isExpense) {
         try {
-            val response = if (isExpense) {
-                RetrofitClient.instance.getCategoriasGastos(userId)
-            } else {
-                RetrofitClient.instance.getCategoriasIngresos(userId)
-            }
+            val response = if (isExpense) RetrofitClient.instance.getCategoriasGastos(userId)
+            else RetrofitClient.instance.getCategoriasIngresos(userId)
+
             if (response.isSuccessful) {
                 categories = response.body()?.data ?: emptyList()
                 selectedCategory = categories.find { it.nombre_categoria == transaccion?.categoria } ?: categories.firstOrNull()
@@ -138,9 +153,7 @@ fun EditTransactionContent(
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp)
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -170,12 +183,10 @@ fun EditTransactionContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Column(
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .verticalScroll(rememberScrollState())
+            modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
         ) {
+            var showFullImage by remember { mutableStateOf(false) }
 
-            // --- FOTO DEL RECIBO (ACTUALIZADO CON PLACEHOLDER DE ERROR) ---
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Icono / Foto del Recibo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
                 if (!isPremium) {
@@ -185,34 +196,43 @@ fun EditTransactionContent(
             }
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .height(140.dp)
-                    .background(Color.White, RoundedCornerShape(12.dp))
-                    .border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable {
+                    .fillMaxWidth().padding(top = 8.dp).height(140.dp)
+                    .background(Color.White, RoundedCornerShape(12.dp)).border(1.dp, BorderSlate, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp)).clickable {
                         if (isPremium) {
-                            photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        } else {
-                            onNavigateToPremium()
-                        }
+                            if (selectedImageUri != null) showFullImage = true
+                            else photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        } else onNavigateToPremium()
                     },
                 contentAlignment = Alignment.Center
             ) {
                 if (selectedImageUri != null) {
-                    // Muestra la imagen nueva que seleccionó con Coil, y si falla pone un placeholder
                     AsyncImage(
-                        model = selectedImageUri,
-                        contentDescription = "Foto seleccionada",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop,
+                        model = selectedImageUri, contentDescription = "Foto seleccionada",
+                        modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop,
                         error = painterResource(id = android.R.drawable.ic_menu_gallery)
                     )
+                    IconButton(
+                        onClick = { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(32.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Cambiar", tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Add, null, tint = PrimaryBlue, modifier = Modifier.size(32.dp).background(PrimaryBlue.copy(0.1f), CircleShape).padding(4.dp))
-                        Text("CAMBIAR IMAGEN DEL RECIBO", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text("SUBIR IMAGEN DEL RECIBO", color = TextMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            if (showFullImage && selectedImageUri != null) {
+                androidx.compose.ui.window.Dialog(onDismissRequest = { showFullImage = false }) {
+                    Box(modifier = Modifier.fillMaxWidth().height(500.dp).clip(RoundedCornerShape(16.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
+                        AsyncImage(model = selectedImageUri, contentDescription = "Recibo en grande", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                        IconButton(onClick = { showFullImage = false }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)) {
+                            Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                        }
                     }
                 }
             }
@@ -223,46 +243,32 @@ fun EditTransactionContent(
             OutlinedTextField(
                 value = amount, onValueChange = { amount = it },
                 leadingIcon = { Text("$", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = primaryColor) },
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp), singleLine = true,
                 textStyle = LocalTextStyle.current.copy(fontSize = 24.sp, fontWeight = FontWeight.Black, color = TextDark),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text("Concepto", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             OutlinedTextField(
-                value = concept, onValueChange = { concept = it },
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                singleLine = true,
-                shape = RoundedCornerShape(8.dp),
-                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                value = concept, onValueChange = { concept = it }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                singleLine = true, shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             Text("Categoría", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
-            ExposedDropdownMenuBox(
-                expanded = expandedCategory,
-                onExpandedChange = { expandedCategory = !expandedCategory }
-            ) {
+            ExposedDropdownMenuBox(expanded = expandedCategory, onExpandedChange = { expandedCategory = !expandedCategory }) {
                 OutlinedTextField(
                     value = selectedCategory?.nombre_categoria ?: "Cargando...", onValueChange = {}, readOnly = true,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp).menuAnchor(),
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedCategory) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
+                    shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor)
                 )
                 ExposedDropdownMenu(expanded = expandedCategory, onDismissRequest = { expandedCategory = false }) {
-                    categories.forEach { cat ->
-                        DropdownMenuItem(
-                            text = { Text(cat.nombre_categoria) },
-                            onClick = { selectedCategory = cat; expandedCategory = false }
-                        )
-                    }
+                    categories.forEach { cat -> DropdownMenuItem(text = { Text(cat.nombre_categoria) }, onClick = { selectedCategory = cat; expandedCategory = false }) }
                 }
             }
 
@@ -275,22 +281,15 @@ fun EditTransactionContent(
                     Icon(Icons.Default.Lock, null, tint = SecondaryRed, modifier = Modifier.size(12.dp))
                 }
             }
-            ExposedDropdownMenuBox(
-                expanded = expandedPlazo,
-                onExpandedChange = { if (isPremium) expandedPlazo = !expandedPlazo else onNavigateToPremium() }
-            ) {
+            ExposedDropdownMenuBox(expanded = expandedPlazo, onExpandedChange = { if (isPremium) expandedPlazo = !expandedPlazo else onNavigateToPremium() }) {
                 OutlinedTextField(
-                    value = selectedPlazo, onValueChange = {}, readOnly = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp).menuAnchor(),
+                    value = selectedPlazo, onValueChange = {}, readOnly = true, modifier = Modifier.fillMaxWidth().padding(top = 4.dp).menuAnchor(),
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedPlazo) },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor, unfocusedContainerColor = if (isPremium) Color.Transparent else BackgroundSlate)
+                    shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = BorderSlate, focusedBorderColor = primaryColor, unfocusedContainerColor = if (isPremium) Color.Transparent else BackgroundSlate)
                 )
                 if (isPremium) {
                     ExposedDropdownMenu(expanded = expandedPlazo, onDismissRequest = { expandedPlazo = false }) {
-                        plazos.forEach { plazo ->
-                            DropdownMenuItem(text = { Text(plazo) }, onClick = { selectedPlazo = plazo; expandedPlazo = false })
-                        }
+                        plazos.forEach { plazo -> DropdownMenuItem(text = { Text(plazo) }, onClick = { selectedPlazo = plazo; expandedPlazo = false }) }
                     }
                 }
             }
@@ -299,7 +298,13 @@ fun EditTransactionContent(
 
             Card(
                 modifier = Modifier.fillMaxWidth().clickable {
-                    if (!isPremium) onNavigateToPremium() else isReminderActive = !isReminderActive
+                    if (!isPremium) onNavigateToPremium()
+                    else {
+                        isReminderActive = !isReminderActive
+                        if (isReminderActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                    }
                 },
                 colors = CardDefaults.cardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, if (isReminderActive) PrimaryBlue else BorderSlate),
@@ -313,15 +318,27 @@ fun EditTransactionContent(
                         Spacer(modifier = Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text("ACTIVAR RECORDATORIO", fontWeight = FontWeight.Black, fontSize = 14.sp, color = TextDark)
-                            Text("Recibe una alerta antes del pago", fontSize = 10.sp, color = TextMuted)
+                            Text("Añadir una alerta para este pago", fontSize = 10.sp, color = TextMuted)
                         }
                         if (!isPremium) Icon(Icons.Default.Lock, null, tint = SecondaryRed, modifier = Modifier.size(20.dp))
                     }
                     if (isReminderActive && isPremium) {
                         Spacer(modifier = Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            OutlinedTextField(value = reminderDate, onValueChange = { reminderDate = it }, placeholder = { Text("dd/mm/aaaa") }, modifier = Modifier.weight(1f))
-                            OutlinedTextField(value = reminderTime, onValueChange = { reminderTime = it }, placeholder = { Text("--:--") }, modifier = Modifier.weight(1f))
+                            Box(modifier = Modifier.weight(1f).clickable { reminderDatePickerDialog.show() }) {
+                                OutlinedTextField(
+                                    value = reminderDate, onValueChange = {}, readOnly = true, enabled = false,
+                                    placeholder = { Text("Fecha", fontSize = 12.sp) }, modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate)
+                                )
+                            }
+                            Box(modifier = Modifier.weight(1f).clickable { reminderTimePickerDialog.show() }) {
+                                OutlinedTextField(
+                                    value = reminderTime, onValueChange = {}, readOnly = true, enabled = false,
+                                    placeholder = { Text("Hora", fontSize = 12.sp) }, modifier = Modifier.fillMaxWidth(),
+                                    colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate)
+                                )
+                            }
                         }
                     }
                 }
@@ -329,23 +346,13 @@ fun EditTransactionContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // --- FECHA DINÁMICA CON SELECTOR ---
             Text("Fecha", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp).clickable { datePickerDialog.show() }) {
                 OutlinedTextField(
-                    value = date,
-                    onValueChange = {},
-                    readOnly = true,
-                    enabled = false,
-                    modifier = Modifier.fillMaxWidth(),
+                    value = date, onValueChange = {}, readOnly = true, enabled = false, modifier = Modifier.fillMaxWidth(),
                     trailingIcon = { Icon(Icons.Default.DateRange, null, tint = primaryColor) },
                     textStyle = LocalTextStyle.current.copy(fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextDark),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = TextDark,
-                        disabledBorderColor = BorderSlate,
-                        disabledTrailingIconColor = primaryColor
-                    )
+                    shape = RoundedCornerShape(8.dp), colors = OutlinedTextFieldDefaults.colors(disabledTextColor = TextDark, disabledBorderColor = BorderSlate, disabledTrailingIconColor = primaryColor)
                 )
             }
 
@@ -354,10 +361,7 @@ fun EditTransactionContent(
             Text("Estado", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = TextDark)
             Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(
-                    modifier = Modifier.weight(1f).height(48.dp)
-                        .border(1.dp, if (isCompleted) AccentGreen else BorderSlate, RoundedCornerShape(8.dp))
-                        .background(if (isCompleted) AccentGreen.copy(0.1f) else Color.Transparent, RoundedCornerShape(8.dp))
-                        .clickable { isCompleted = true },
+                    modifier = Modifier.weight(1f).height(48.dp).border(1.dp, if (isCompleted) AccentGreen else BorderSlate, RoundedCornerShape(8.dp)).background(if (isCompleted) AccentGreen.copy(0.1f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { isCompleted = true },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -367,10 +371,7 @@ fun EditTransactionContent(
                     }
                 }
                 Box(
-                    modifier = Modifier.weight(1f).height(48.dp)
-                        .border(1.dp, if (!isCompleted) SecondaryRed else BorderSlate, RoundedCornerShape(8.dp))
-                        .background(if (!isCompleted) SecondaryRed.copy(0.1f) else Color.Transparent, RoundedCornerShape(8.dp))
-                        .clickable { isCompleted = false },
+                    modifier = Modifier.weight(1f).height(48.dp).border(1.dp, if (!isCompleted) SecondaryRed else BorderSlate, RoundedCornerShape(8.dp)).background(if (!isCompleted) SecondaryRed.copy(0.1f) else Color.Transparent, RoundedCornerShape(8.dp)).clickable { isCompleted = false },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -391,40 +392,45 @@ fun EditTransactionContent(
                         isLoading = true
                         try {
                             val montoDouble = amount.toDoubleOrNull() ?: 0.0
-                            val imagenString = selectedImageUri?.toString() // Captura la foto en texto
+                            val imagenString = selectedImageUri?.toString()
 
                             val response = if (isExpense) {
                                 RetrofitClient.instance.updateGasto(
                                     transaccion.id,
-                                    GastoRequest(
-                                        user_id = userId,
-                                        categoria_id = selectedCategory!!.categoria_id,
-                                        fecha_gasto = date,
-                                        nombre_gasto = concept,
-                                        descripcion = null,
-                                        plazo = if (selectedPlazo == "Pago Único") null else selectedPlazo,
-                                        monto_gasto = montoDouble,
-                                        imagen_uri = imagenString
-                                    )
+                                    GastoRequest(user_id = userId, categoria_id = selectedCategory!!.categoria_id, fecha_gasto = date, nombre_gasto = concept, descripcion = null, plazo = if (selectedPlazo == "Pago Único") null else selectedPlazo, monto_gasto = montoDouble, imagen_uri = imagenString)
                                 )
                             } else {
                                 RetrofitClient.instance.updateIngreso(
                                     transaccion.id,
-                                    IngresoRequest(
-                                        user_id = userId,
-                                        categoria_id = selectedCategory!!.categoria_id,
-                                        fecha_ingreso = date,
-                                        nombre_ingreso = concept,
-                                        descripcion = null,
-                                        monto = montoDouble,
-                                        recibido = if (isCompleted) 1 else 0,
-                                        plazo = if (selectedPlazo == "Pago Único") "ÚNICO" else selectedPlazo,
-                                        imagen_uri = imagenString
-                                    )
+                                    IngresoRequest(user_id = userId, categoria_id = selectedCategory!!.categoria_id, fecha_ingreso = date, nombre_ingreso = concept, descripcion = null, monto = montoDouble, recibido = if (isCompleted) 1 else 0, plazo = if (selectedPlazo == "Pago Único") "ÚNICO" else selectedPlazo, imagen_uri = imagenString)
                                 )
                             }
 
                             if (response.isSuccessful) {
+                                val nuevoEstado = if (isCompleted) 1 else 0
+                                if (isExpense) RetrofitClient.instance.updateEstatusGasto(transaccion.id, EstatusGastoRequest(nuevoEstado))
+                                else RetrofitClient.instance.updateEstatusIngreso(transaccion.id, EstatusIngresoRequest(nuevoEstado))
+
+                                if (isReminderActive && isPremium && reminderDate.isNotBlank() && reminderTime.isNotBlank()) {
+                                    val fechaYHora = "${reminderDate} ${reminderTime}:00"
+                                    RetrofitClient.instance.addRecordatorio(RecordatorioRequest(userId, fechaYHora, concept))
+
+                                    // --- MAGIA: PROGRAMAR ALARMA LOCAL ---
+                                    val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                                    try {
+                                        val dateObj = sdf.parse(fechaYHora)
+                                        if (dateObj != null) {
+                                            com.example.freeze_xpends.utils.scheduleNotification(
+                                                context = context,
+                                                timeInMillis = dateObj.time,
+                                                title = "¡Recordatorio: $concept!",
+                                                message = "Tienes este movimiento programado para hoy.",
+                                                notificationId = transaccion.id
+                                            )
+                                        }
+                                    } catch (e: Exception) { e.printStackTrace() }
+                                }
+
                                 Toast.makeText(context, "Transacción actualizada", Toast.LENGTH_SHORT).show()
                                 onSaveSuccess()
                             } else {
@@ -436,10 +442,7 @@ fun EditTransactionContent(
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-            shape = RoundedCornerShape(12.dp),
-            enabled = !isLoading
+            modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue), shape = RoundedCornerShape(12.dp), enabled = !isLoading
         ) {
             if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
             else {
@@ -457,28 +460,19 @@ fun EditTransactionContent(
                     scope.launch {
                         isLoading = true
                         try {
-                            val response = if (isExpense) {
-                                RetrofitClient.instance.deleteGasto(transaccion.id)
-                            } else {
-                                RetrofitClient.instance.deleteIngreso(transaccion.id)
-                            }
+                            val response = if (isExpense) RetrofitClient.instance.deleteGasto(transaccion.id)
+                            else RetrofitClient.instance.deleteIngreso(transaccion.id)
 
                             if (response.isSuccessful) {
                                 Toast.makeText(context, "Transacción eliminada", Toast.LENGTH_SHORT).show()
                                 onDeleteSuccess()
-                            } else {
-                                Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Error de red: ${e.message}", Toast.LENGTH_SHORT).show()
-                        } finally { isLoading = false }
+                            } else Toast.makeText(context, "Error al eliminar", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) { Toast.makeText(context, "Error de red: ${e.message}", Toast.LENGTH_SHORT).show() }
+                        finally { isLoading = false }
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFDE8E8)),
-            shape = RoundedCornerShape(12.dp),
-            enabled = !isLoading
+            modifier = Modifier.fillMaxWidth().height(56.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFDE8E8)), shape = RoundedCornerShape(12.dp), enabled = !isLoading
         ) {
             Icon(Icons.Outlined.Delete, null, tint = SecondaryRed, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))

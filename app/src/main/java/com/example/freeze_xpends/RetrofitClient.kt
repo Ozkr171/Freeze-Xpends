@@ -7,16 +7,12 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    // --- 1. CONFIGURACIÓN DE ENTORNOS ---
-    // Cambia esto a 'false' cuando vayas a generar el APK final
-    private const val IS_DEV = true
+  
+    private const val IS_DEV = false
 
-    // Tu IP local donde corre Node.js (Asegúrate de que no haya cambiado)
-    private const val DEV_URL = "http://10.0.2.2:3000/"
+    private const val DEV_URL = "http://192.168.0.59:3000/"
 
-
-    // Aquí pondrás la URL de Render, Railway, Vercel, etc., en el futuro
-    private const val PROD_URL = "https://tu-api-en-la-nube.onrender.com/"
+    private const val PROD_URL = "https://freezexpends-api.onrender.com/"
 
     private val BASE_URL = if (IS_DEV) DEV_URL else PROD_URL
 

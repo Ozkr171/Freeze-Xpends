@@ -18,20 +18,27 @@ class UserViewModel : ViewModel() {
     private val _isPremium = MutableStateFlow(false)
     val isPremium: StateFlow<Boolean> = _isPremium.asStateFlow()
 
-    // --- NUEVAS VARIABLES ---
     private val _userCurrency = MutableStateFlow("MXN")
     val userCurrency: StateFlow<String> = _userCurrency.asStateFlow()
 
     private val _userPhoto = MutableStateFlow<String?>(null)
     val userPhoto: StateFlow<String?> = _userPhoto.asStateFlow()
 
-    fun setUserData(id: Int, name: String, email: String, isPremium: Boolean, currency: String = "MXN", photo: String? = null) {
+    // --- NUEVA VARIABLE DE FORMATO ---
+    private val _userFormat = MutableStateFlow("US")
+    val userFormat: StateFlow<String> = _userFormat.asStateFlow()
+
+    fun setUserData(
+        id: Int, name: String, email: String, isPremium: Boolean,
+        currency: String = "MXN", photo: String? = null, format: String = "US"
+    ) {
         _userId.value = id
         _userName.value = name
         _userEmail.value = email
         _isPremium.value = isPremium
         _userCurrency.value = currency
         _userPhoto.value = photo
+        _userFormat.value = format
     }
 
     fun clearData() {
@@ -41,5 +48,6 @@ class UserViewModel : ViewModel() {
         _isPremium.value = false
         _userCurrency.value = "MXN"
         _userPhoto.value = null
+        _userFormat.value = "US"
     }
 }
