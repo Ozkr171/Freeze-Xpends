@@ -7,7 +7,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-  
+
     private const val IS_DEV = false
 
     private const val DEV_URL = "http://192.168.0.59:3000/"

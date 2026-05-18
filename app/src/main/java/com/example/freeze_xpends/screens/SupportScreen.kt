@@ -90,11 +90,11 @@ fun SupportScreen(onNavigateBack: () -> Unit) {
             ContactOptionCard(
                 icon = Icons.Outlined.Email,
                 title = "Email",
-                subtitle = "soporte@freezexpends.com",
+                subtitle = "freezexpends@gmail.com",
                 onClick = {
                     // Acción nativa para abrir la app de correos
                     val intent = Intent(Intent.ACTION_SENDTO).apply {
-                        data = Uri.parse("mailto:soporte@freezexpends.com")
+                        data = Uri.parse("mailto:freezexpends@gmail.com")
                         putExtra(Intent.EXTRA_SUBJECT, "Duda sobre Freeze-xpends")
                     }
                     context.startActivity(intent)
